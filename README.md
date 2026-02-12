@@ -108,6 +108,8 @@ If you prefer not to use `init`, you can manually create `.cursor/mcp.json`:
 | `memory_update_tasks(tasks_json)` | When task status changes | Updates TASKS.md and primer |
 | `memory_read(path)` | When you need full file content | Reads and returns complete Markdown file |
 
+> **Detailed usage examples**: See [Cursor Usage Guide](docs/cursor-usage-guide.md) for a complete walkthrough of a multi-session scenario showing how the agent uses each tool in practice.
+
 ## How It Works
 
 ### Memory Directory Structure

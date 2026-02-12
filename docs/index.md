@@ -14,6 +14,7 @@
 | [configuration.md](configuration.md) | 配置系统：多层合并、环境变量、配置项参考 |
 | [session-management.md](session-management.md) | 会话管理：Primer 构建、日志写入、任务追踪 |
 | [privacy.md](privacy.md) | 隐私保护：正则模式、过滤流程、自定义规则 |
+| [cursor-usage-guide.md](cursor-usage-guide.md) | **Cursor 使用用例**：完整场景演示、工具速查表、搜索技巧 |
 
 ## 架构概览
 

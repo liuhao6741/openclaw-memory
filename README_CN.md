@@ -106,6 +106,8 @@ claw-memory index
 | `memory_update_tasks(tasks_json)` | 任务状态变更时 | 更新 TASKS.md 和引导文件 |
 | `memory_read(path)` | 需要查看完整文件内容时 | 读取并返回完整的 Markdown 文件 |
 
+> **详细使用用例**：请参阅 [Cursor 使用用例指南](docs/cursor-usage-guide.md)，通过一个完整的多会话场景演示 Agent 如何在实践中使用每个工具。
+
 ## 工作原理
 
 ### 记忆目录结构
