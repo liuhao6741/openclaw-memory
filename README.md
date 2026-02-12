@@ -1,5 +1,7 @@
 # OpenClaw Memory
 
+[![PyPI version](https://img.shields.io/pypi/v/claw-memory.svg)](https://pypi.org/project/claw-memory/)
+
 A lightweight MCP memory server designed for AI agents. Markdown files as the single source of truth, zero external dependencies.
 
 [中文文档](README_CN.md)
@@ -21,19 +23,23 @@ A lightweight MCP memory server designed for AI agents. Markdown files as the si
 ### 1. Install + Initialize (two commands)
 
 ```bash
-# Step 1: Install (run once in the claw-memory source directory)
-cd /path/to/claw-memory
-pip install -e ".[local]"          # Local embedding (works offline)
-# or pip install -e ".[openai]"   # OpenAI embedding (more accurate)
+# Step 1: Install from PyPI (recommended)
+pip install claw-memory[local]          # Local embedding (works offline)
+# or pip install claw-memory[openai]   # OpenAI embedding (more accurate)
+# or pip install claw-memory[ollama]   # Ollama embedding
 
 # Step 2: Initialize in any project, then restart Cursor
 cd /path/to/your/project
 claw-memory init
 ```
 
-> **Note**: If `pip` is not in your PATH (e.g. using pyenv), use the virtualenv pip:
-> `/path/to/claw-memory/.venv/bin/pip install -e ".[local]"`,
-> then run init with `.venv/bin/claw-memory init`.
+**Or install from source** (for development):
+
+```bash
+cd /path/to/claw-memory
+pip install -e ".[local]"          # Local embedding
+# or pip install -e ".[openai]"   # OpenAI embedding
+```
 
 **The `init` command automatically handles all configuration:**
 

@@ -1,5 +1,7 @@
 # OpenClaw Memory
 
+[![PyPI version](https://img.shields.io/pypi/v/claw-memory.svg)](https://pypi.org/project/claw-memory/)
+
 一个为 AI Agent 设计的轻量级 MCP 记忆服务。以 Markdown 文件作为唯一数据源，零外部依赖。
 
 ## 特性
@@ -19,19 +21,23 @@
 ### 1. 安装 + 初始化（两条命令搞定）
 
 ```bash
-# 第一步：安装（在 claw-memory 源码目录执行，只需一次）
-cd /path/to/claw-memory
-pip install -e ".[local]"          # 本地 embedding（离线可用）
-# 或 pip install -e ".[openai]"   # OpenAI embedding（更准确）
+# 第一步：从 PyPI 安装（推荐）
+pip install claw-memory[local]          # 本地 embedding（离线可用）
+# 或 pip install claw-memory[openai]   # OpenAI embedding（更准确）
+# 或 pip install claw-memory[ollama]   # Ollama embedding
 
 # 第二步：在你的任意项目中初始化，然后重启 Cursor
 cd /path/to/your/project
 claw-memory init
 ```
 
-> **注意**：如果 `pip` 不在 PATH 中（如使用 pyenv），用虚拟环境中的 pip：
-> `/path/to/claw-memory/.venv/bin/pip install -e ".[local]"`，
-> 然后用 `.venv/bin/claw-memory init` 运行初始化。
+**或从源码安装**（开发时使用）：
+
+```bash
+cd /path/to/claw-memory
+pip install -e ".[local]"          # 本地 embedding
+# 或 pip install -e ".[openai]"   # OpenAI embedding
+```
 
 **`init` 命令会自动完成所有配置：**
 
