@@ -30,7 +30,7 @@ class LocalEmbedding:
             except ImportError:
                 raise ImportError(
                     "sentence-transformers is required for local embeddings. "
-                    "Install with: pip install openclaw-memory[local]"
+                    "Install with: pip install claw-memory[local]"
                 )
 
             logger.info(f"Loading local embedding model: {self.model}")

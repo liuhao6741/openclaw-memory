@@ -104,7 +104,7 @@ def _get_privacy_filter() -> PrivacyFilter:
 # ---------------------------------------------------------------------------
 
 mcp = FastMCP(
-    name="openclaw-memory",
+    name="claw-memory",
     instructions=(
         "OpenClaw Memory is a persistent memory system for AI agents. "
         "Use memory_primer() at the start of every session to load context. "

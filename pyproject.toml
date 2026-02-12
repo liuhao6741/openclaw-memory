@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "openclaw-memory"
+name = "claw-memory"
 version = "0.1.0"
 description = "A lightweight MCP memory server for AI agents. Markdown-first, zero external dependencies."
 readme = "README.md"
@@ -33,9 +33,9 @@ openai = ["openai>=1.0.0"]
 ollama = ["ollama>=0.4.0"]
 local = ["sentence-transformers>=3.0.0"]
 all = [
-    "openclaw-memory[openai]",
-    "openclaw-memory[ollama]",
-    "openclaw-memory[local]",
+    "claw-memory[openai]",
+    "claw-memory[ollama]",
+    "claw-memory[local]",
 ]
 dev = [
     "pytest>=8.0.0",
@@ -44,7 +44,7 @@ dev = [
 ]
 
 [project.scripts]
-openclaw-memory = "openclaw_memory.__main__:main"
+claw-memory = "openclaw_memory.__main__:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/openclaw_memory"]

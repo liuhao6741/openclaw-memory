@@ -21,7 +21,7 @@ class OllamaEmbedding:
             except ImportError:
                 raise ImportError(
                     "ollama package is required for Ollama embeddings. "
-                    "Install with: pip install openclaw-memory[ollama]"
+                    "Install with: pip install claw-memory[ollama]"
                 )
             self._client = AsyncClient(host=self.base_url)
         return self._client

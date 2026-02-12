@@ -21,19 +21,19 @@ A lightweight MCP memory server designed for AI agents. Markdown files as the si
 ### 1. Install + Initialize (two commands)
 
 ```bash
-# Step 1: Install (run once in the openclaw-memory source directory)
-cd /path/to/openclaw-memory
+# Step 1: Install (run once in the claw-memory source directory)
+cd /path/to/claw-memory
 pip install -e ".[local]"          # Local embedding (works offline)
 # or pip install -e ".[openai]"   # OpenAI embedding (more accurate)
 
 # Step 2: Initialize in any project, then restart Cursor
 cd /path/to/your/project
-openclaw-memory init
+claw-memory init
 ```
 
 > **Note**: If `pip` is not in your PATH (e.g. using pyenv), use the virtualenv pip:
-> `/path/to/openclaw-memory/.venv/bin/pip install -e ".[local]"`,
-> then run init with `.venv/bin/openclaw-memory init`.
+> `/path/to/claw-memory/.venv/bin/pip install -e ".[local]"`,
+> then run init with `.venv/bin/claw-memory init`.
 
 **The `init` command automatically handles all configuration:**
 
@@ -48,13 +48,13 @@ Optional flags:
 
 ```bash
 # Specify embedding provider
-openclaw-memory init --provider openai
+claw-memory init --provider openai
 
 # Specify project name
-openclaw-memory init --name "my-awesome-project"
+claw-memory init --name "my-awesome-project"
 
 # Initialize global memory only (skip project-level files)
-openclaw-memory init --global-only
+claw-memory init --global-only
 ```
 
 **After init completes, restart Cursor and the agent will automatically use the memory tools.**
@@ -63,13 +63,13 @@ openclaw-memory init --global-only
 
 ```bash
 # Start MCP server (usually called automatically by Cursor)
-openclaw-memory serve
+claw-memory serve
 
 # SSE mode (for web clients)
-openclaw-memory serve --transport sse --port 8765
+claw-memory serve --transport sse --port 8765
 
 # One-shot index of existing memory files
-openclaw-memory index
+claw-memory index
 ```
 
 ### Manual Configuration (optional)
@@ -79,7 +79,7 @@ If you prefer not to use `init`, you can manually create `.cursor/mcp.json`:
 ```json
 {
   "mcpServers": {
-    "openclaw-memory": {
+    "claw-memory": {
       "command": "python",
       "args": ["-m", "openclaw_memory"],
       "env": {

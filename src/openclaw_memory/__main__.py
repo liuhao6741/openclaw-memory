@@ -14,7 +14,7 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        prog="openclaw-memory",
+        prog="claw-memory",
         description="OpenClaw Memory — MCP memory server for AI agents",
     )
     sub = parser.add_subparsers(dest="command")
@@ -282,7 +282,7 @@ def _init_cursor_mcp(project_dir: Path, python_path: str, provider: str) -> None
         existing = {}
 
     existing.setdefault("mcpServers", {})
-    existing["mcpServers"]["openclaw-memory"] = new_server
+    existing["mcpServers"]["claw-memory"] = new_server
     mcp_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(f"[3/5] Cursor MCP config: .cursor/mcp.json")
 

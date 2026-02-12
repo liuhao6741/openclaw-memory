@@ -19,19 +19,19 @@
 ### 1. 安装 + 初始化（两条命令搞定）
 
 ```bash
-# 第一步：安装（在 openclaw-memory 源码目录执行，只需一次）
-cd /path/to/openclaw-memory
+# 第一步：安装（在 claw-memory 源码目录执行，只需一次）
+cd /path/to/claw-memory
 pip install -e ".[local]"          # 本地 embedding（离线可用）
 # 或 pip install -e ".[openai]"   # OpenAI embedding（更准确）
 
 # 第二步：在你的任意项目中初始化，然后重启 Cursor
 cd /path/to/your/project
-openclaw-memory init
+claw-memory init
 ```
 
 > **注意**：如果 `pip` 不在 PATH 中（如使用 pyenv），用虚拟环境中的 pip：
-> `/path/to/openclaw-memory/.venv/bin/pip install -e ".[local]"`，
-> 然后用 `.venv/bin/openclaw-memory init` 运行初始化。
+> `/path/to/claw-memory/.venv/bin/pip install -e ".[local]"`，
+> 然后用 `.venv/bin/claw-memory init` 运行初始化。
 
 **`init` 命令会自动完成所有配置：**
 
@@ -46,13 +46,13 @@ openclaw-memory init
 
 ```bash
 # 指定 embedding provider
-openclaw-memory init --provider openai
+claw-memory init --provider openai
 
 # 指定项目名称
-openclaw-memory init --name "my-awesome-project"
+claw-memory init --name "my-awesome-project"
 
 # 仅初始化全局记忆（不创建项目级文件）
-openclaw-memory init --global-only
+claw-memory init --global-only
 ```
 
 **初始化完成后，重启 Cursor 即可使用。** Agent 会自动调用记忆工具。
@@ -61,13 +61,13 @@ openclaw-memory init --global-only
 
 ```bash
 # 启动 MCP 服务（通常由 Cursor 自动调用，无需手动运行）
-openclaw-memory serve
+claw-memory serve
 
 # SSE 模式（用于 Web 客户端）
-openclaw-memory serve --transport sse --port 8765
+claw-memory serve --transport sse --port 8765
 
 # 一次性索引已有记忆文件
-openclaw-memory index
+claw-memory index
 ```
 
 ### 手动配置（可选）
@@ -77,7 +77,7 @@ openclaw-memory index
 ```json
 {
   "mcpServers": {
-    "openclaw-memory": {
+    "claw-memory": {
       "command": "python",
       "args": ["-m", "openclaw_memory"],
       "env": {

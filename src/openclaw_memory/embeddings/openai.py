@@ -23,7 +23,7 @@ class OpenAIEmbedding:
             except ImportError:
                 raise ImportError(
                     "openai package is required for OpenAI embeddings. "
-                    "Install with: pip install openclaw-memory[openai]"
+                    "Install with: pip install claw-memory[openai]"
                 )
             api_key = self.api_key or os.environ.get("OPENAI_API_KEY", "")
             self._client = AsyncOpenAI(api_key=api_key, base_url=self.base_url)
