@@ -16,8 +16,10 @@ deeper queries and to record new knowledge.
 | Tool | When to Use |
 |------|-------------|
 | `memory_primer()` | Session start — load full context (call ONCE) |
-| `memory_search(query)` | Need to recall something specific from past sessions |
+| `memory_search(query)` | Need to recall something specific (compact index by default) |
+| `memory_search(query, detail=true)` | Need full content of search results |
 | `memory_log(content)` | Discovered important information worth remembering |
+| `memory_observe(action, result, files, insight)` | After significant coding actions |
 | `memory_session_end(...)` | User ends the session or says goodbye |
 | `memory_update_tasks(tasks_json)` | Task status changed during work |
 | `memory_read(path)` | Need to see the full content of a memory file |
@@ -35,6 +37,16 @@ deeper queries and to record new knowledge.
 - Raw code snippets or file paths
 - Uncertain guesses or speculation ("maybe...", "probably...")
 - Information already present in the auto-injected context
+
+### When to Record Observations (memory_observe)
+
+Call after completing a significant action to build a structured timeline:
+- Completed a code change or refactor
+- Debugged and found a root cause
+- Ran tests and discovered failures/fixes
+- Made an architectural decision
+
+Provide: `action` (what you did), `result` (outcome), `files` (touched), `insight` (reusable lesson).
 
 ### When to Search Memories (memory_search)
 

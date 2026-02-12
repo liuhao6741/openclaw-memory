@@ -46,6 +46,30 @@ class SearchConfig:
     default_max_tokens: int = 1500
     recency_half_life_days: float = 30.0
     default_top_k: int = 10
+    # Salience weights (must sum to 1.0)
+    w_semantic: float = 0.50
+    w_reinforcement: float = 0.20
+    w_recency: float = 0.20
+    w_access: float = 0.10
+
+
+@dataclass
+class WriterConfig:
+    reinforce_threshold: float = 0.92   # similarity >= this → reinforce (don't duplicate)
+    conflict_threshold: float = 0.85    # similarity >= this → replace conflicting entry
+    # Custom routing rules (list of {pattern, target, is_global, importance})
+    # Empty = use built-in defaults
+    extra_routing_rules: list[dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class ContextConfig:
+    """Configuration for auto-injected Cursor context file."""
+    max_tokens: int = 800             # max tokens for the context file content
+    max_preferences: int = 5          # max preference items to include
+    max_recent_entries: int = 8       # max recent journal entries
+    max_tasks: int = 10               # max tasks to include
+    include_instructions: bool = True # include global instructions
 
 
 @dataclass
@@ -62,6 +86,8 @@ class OpenClawConfig:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig)
     privacy: PrivacyConfig = field(default_factory=PrivacyConfig)
     search: SearchConfig = field(default_factory=SearchConfig)
+    writer: WriterConfig = field(default_factory=WriterConfig)
+    context: ContextConfig = field(default_factory=ContextConfig)
 
     # Resolved paths
     global_root: Path = field(default_factory=lambda: Path.home() / ".openclaw_memory")
@@ -210,6 +236,32 @@ def _dict_to_dataclass(raw: dict[str, Any], global_root: Path, project_root: Pat
         cfg.search.recency_half_life_days = float(srch["recency_half_life_days"])
     if "default_top_k" in srch:
         cfg.search.default_top_k = int(srch["default_top_k"])
+    # Salience weights
+    for w_key in ("w_semantic", "w_reinforcement", "w_recency", "w_access"):
+        if w_key in srch:
+            setattr(cfg.search, w_key, float(srch[w_key]))
+
+    # Writer
+    wrt = raw.get("writer", {})
+    if "reinforce_threshold" in wrt:
+        cfg.writer.reinforce_threshold = float(wrt["reinforce_threshold"])
+    if "conflict_threshold" in wrt:
+        cfg.writer.conflict_threshold = float(wrt["conflict_threshold"])
+    if "extra_routing_rules" in wrt:
+        cfg.writer.extra_routing_rules = list(wrt["extra_routing_rules"])
+
+    # Context (cursor auto-injection)
+    ctx = raw.get("context", {})
+    if "max_tokens" in ctx:
+        cfg.context.max_tokens = int(ctx["max_tokens"])
+    if "max_preferences" in ctx:
+        cfg.context.max_preferences = int(ctx["max_preferences"])
+    if "max_recent_entries" in ctx:
+        cfg.context.max_recent_entries = int(ctx["max_recent_entries"])
+    if "max_tasks" in ctx:
+        cfg.context.max_tasks = int(ctx["max_tasks"])
+    if "include_instructions" in ctx:
+        cfg.context.include_instructions = bool(ctx["include_instructions"])
 
     return cfg
 

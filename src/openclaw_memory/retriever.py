@@ -51,13 +51,17 @@ def compute_salience(
     access_count: int,
     max_access: int,
     half_life_days: float = 30.0,
+    *,
+    w_semantic: float = 0.50,
+    w_reinforcement: float = 0.20,
+    w_recency: float = 0.20,
+    w_access: float = 0.10,
 ) -> float:
-    """Compute salience score using multi-dimensional weighting.
+    """Compute salience score using configurable multi-dimensional weighting.
 
-    salience = 0.50 * semantic_similarity
-             + 0.20 * reinforcement_score
-             + 0.20 * recency_decay
-             + 0.10 * access_frequency
+    Default weights (configurable in .openclaw_memory.toml under [search]):
+      salience = w_semantic * similarity + w_reinforcement * reinforcement_score
+               + w_recency * recency_decay + w_access * access_frequency
     """
     # Reinforcement score (log-normalized)
     if max_reinforcement > 0:
@@ -82,10 +86,10 @@ def compute_salience(
         access_score = 0.0
 
     salience = (
-        0.50 * semantic_score
-        + 0.20 * reinf_score
-        + 0.20 * recency
-        + 0.10 * access_score
+        w_semantic * semantic_score
+        + w_reinforcement * reinf_score
+        + w_recency * recency
+        + w_access * access_score
     )
     return salience
 
@@ -133,12 +137,20 @@ class Retriever:
         *,
         default_max_tokens: int = 1500,
         half_life_days: float = 30.0,
+        w_semantic: float = 0.50,
+        w_reinforcement: float = 0.20,
+        w_recency: float = 0.20,
+        w_access: float = 0.10,
     ) -> None:
         self.store = store
         self.embedder = embedder
         self.memory_roots = memory_roots
         self.default_max_tokens = default_max_tokens
         self.half_life_days = half_life_days
+        self.w_semantic = w_semantic
+        self.w_reinforcement = w_reinforcement
+        self.w_recency = w_recency
+        self.w_access = w_access
 
     async def search(
         self,
@@ -294,6 +306,10 @@ class Retriever:
                 access_count=record.access_count,
                 max_access=max_access,
                 half_life_days=self.half_life_days,
+                w_semantic=self.w_semantic,
+                w_reinforcement=self.w_reinforcement,
+                w_recency=self.w_recency,
+                w_access=self.w_access,
             )
             scored.append(SearchResult(
                 content=record.content,

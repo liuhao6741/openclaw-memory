@@ -86,6 +86,10 @@ def _get_retriever() -> Retriever:
             memory_roots=roots,
             default_max_tokens=cfg.search.default_max_tokens,
             half_life_days=cfg.search.recency_half_life_days,
+            w_semantic=cfg.search.w_semantic,
+            w_reinforcement=cfg.search.w_reinforcement,
+            w_recency=cfg.search.w_recency,
+            w_access=cfg.search.w_access,
         )
     return _retriever
 
@@ -99,6 +103,23 @@ def _get_privacy_filter() -> PrivacyFilter:
             enabled=cfg.privacy.enabled,
         )
     return _privacy_filter
+
+
+def _extract_preview(content: str, max_chars: int = 60) -> str:
+    """Extract a short preview from memory content for compact display."""
+    for line in content.split("\n"):
+        line = line.strip()
+        # Skip frontmatter markers, headers, and empty lines
+        if not line or line.startswith("---") or line.startswith("#"):
+            continue
+        # Strip list marker
+        if line.startswith("- "):
+            line = line[2:]
+        # Truncate
+        if len(line) > max_chars:
+            return line[:max_chars - 3] + "..."
+        return line
+    return "(empty)"
 
 
 def _refresh_cursor_context() -> None:
@@ -115,6 +136,7 @@ def _refresh_cursor_context() -> None:
             global_root=cfg.global_root,
             project_name=cfg.project.name,
             project_description=cfg.project.description,
+            ctx_cfg=cfg.context,
         )
     except Exception as e:
         logger.warning(f"Cursor context refresh failed (non-critical): {e}")
@@ -143,7 +165,8 @@ mcp = FastMCP(
         "Key context is auto-injected via Cursor rules — you already have it. "
         "Use memory_primer() at session start for full context. "
         "Use memory_log() to record user preferences, technical decisions, patterns, and facts. "
-        "Use memory_search(query) to recall specific past information with keyword-rich queries. "
+        "Use memory_observe() after significant coding actions to build a structured timeline. "
+        "Use memory_search(query) to recall specific past info (compact index by default, detail=true for full). "
         "Use memory_session_end() when the user ends the session."
     ),
 )
@@ -190,6 +213,7 @@ async def memory_search(
     query: str,
     scope: str = "",
     max_tokens: int = 0,
+    detail: bool = False,
 ) -> str:
     """Search memories with hybrid retrieval (semantic + full-text) and salience scoring.
 
@@ -203,8 +227,12 @@ async def memory_search(
     - Include "recent" or "最近" to trigger the fast timeline path (reads last 7 days)
     - Queries about "preference" or "偏好" trigger the fast keyword path
 
-    Results are ranked by salience = 50% semantic similarity + 20% reinforcement
-    + 20% recency + 10% access frequency, and capped at the token budget.
+    By default returns a **compact index** (~50-100 tokens/result) with salience
+    scores and first-line previews. Set detail=true to get full content (costs
+    more tokens). Use `memory_read(path)` to read a specific file in full.
+
+    Results are ranked by salience (configurable weights, default:
+    50% semantic + 20% reinforcement + 20% recency + 10% access frequency).
 
     Args:
         query: What you want to find (natural language, be keyword-rich).
@@ -212,6 +240,7 @@ async def memory_search(
                "journal" (session logs), "agent" (decisions/patterns),
                "global" (cross-project), or "" for all scopes.
         max_tokens: Maximum tokens in results (0 = use default 1500).
+        detail: If true, return full content for each result (default: compact index).
     """
     _ensure_first_call_refresh()
     retriever = _get_retriever()
@@ -224,16 +253,37 @@ async def memory_search(
     if not response.results:
         return "No matching memories found."
 
-    parts: list[str] = []
-    for r in response.results:
-        header = f"[salience: {r.salience:.2f} | reinforcement: {r.reinforcement} | {r.uri}]"
-        parts.append(f"{header}\n{r.content}")
+    if detail or response.fast_path_used:
+        # Full content mode (or fast-path which always returns full)
+        parts: list[str] = []
+        for r in response.results:
+            header = f"[salience: {r.salience:.2f} | reinforcement: {r.reinforcement} | {r.uri}]"
+            parts.append(f"{header}\n{r.content}")
 
-    footer = f"\n[total tokens: {response.total_tokens} | budget remaining: {response.budget_remaining}]"
-    if response.fast_path_used:
-        footer += " (fast path)"
+        footer = f"\n[total tokens: {response.total_tokens} | budget remaining: {response.budget_remaining}]"
+        if response.fast_path_used:
+            footer += " (fast path)"
+        return "\n\n---\n\n".join(parts) + footer
+    else:
+        # Compact index mode (~50-100 tokens/result)
+        lines: list[str] = []
+        lines.append("| # | Salience | Source | Preview | Tokens |")
+        lines.append("|---|---------|--------|---------|--------|")
+        for i, r in enumerate(response.results, 1):
+            # Extract first meaningful line as preview
+            preview = _extract_preview(r.content, max_chars=60)
+            lines.append(
+                f"| {i} | {r.salience:.2f} | `{r.uri}` | {preview} | ~{r.token_count} |"
+            )
 
-    return "\n\n---\n\n".join(parts) + footer
+        footer_parts = [
+            f"\n**{len(response.results)} results** "
+            f"(total ~{response.total_tokens} tokens, budget remaining: {response.budget_remaining})",
+            "",
+            "_Tip: Set detail=true to see full content, "
+            "or use `memory_read(path)` to read a specific file._",
+        ]
+        return "\n".join(lines + footer_parts)
 
 
 @mcp.tool()
@@ -275,6 +325,8 @@ async def memory_log(
         embedder=embedder,
         privacy_filter=privacy,
         memory_type=type or None,
+        reinforce_threshold=cfg.writer.reinforce_threshold,
+        conflict_threshold=cfg.writer.conflict_threshold,
     )
 
     if result.action == "rejected":
@@ -392,6 +444,106 @@ async def memory_update_tasks(tasks_json: str) -> str:
     _refresh_cursor_context()
 
     return f"TASKS.md updated with {len(tasks)} tasks. PRIMER.md refreshed."
+
+
+@mcp.tool()
+async def memory_observe(
+    action: str,
+    result: str = "",
+    files: str = "",
+    insight: str = "",
+) -> str:
+    """Record a structured observation about a coding action you just performed.
+
+    Unlike memory_log() which records standalone facts, this captures **what you
+    just did** with structured metadata — closer to how claude-mem auto-records
+    tool executions. Use this after significant actions to build a richer timeline.
+
+    The observation is written to today's journal with structured formatting.
+    If `insight` contains a reusable pattern or decision, it is also routed
+    to the appropriate memory file (patterns.md / decisions.md).
+
+    Call after:
+    - Completing a significant code change or refactor
+    - Debugging and finding a root cause
+    - Running tests and discovering failures/fixes
+    - Making an architectural or dependency decision
+
+    Args:
+        action: What you did (e.g., "Fixed N+1 query in user_list endpoint").
+        result: Outcome or key finding (e.g., "Response time dropped from 2s to 50ms").
+        files: Comma-separated list of files touched (e.g., "api/users.py, tests/test_users.py").
+        insight: Optional reusable insight — if provided, also saved as a pattern/decision memory.
+    """
+    cfg = _get_config()
+    if not cfg.project_root:
+        return "No project detected. Observation not recorded."
+
+    from datetime import date as date_cls
+    from datetime import datetime as dt
+
+    # Build structured observation block for journal
+    time_str = dt.now().strftime("%H:%M")
+    lines: list[str] = [f"### [{time_str}] {action}"]
+    if result:
+        lines.append(f"- **Result:** {result}")
+    if files:
+        lines.append(f"- **Files:** {files}")
+    if insight:
+        lines.append(f"- **Insight:** {insight}")
+    lines.append("")
+    obs_block = "\n".join(lines)
+
+    # Append to today's journal
+    today = date_cls.today().isoformat()
+    journal_dir = cfg.project_root / ".openclaw_memory" / "journal"
+    journal_dir.mkdir(parents=True, exist_ok=True)
+    journal_path = journal_dir / f"{today}.md"
+
+    import frontmatter
+
+    if journal_path.is_file():
+        existing = journal_path.read_text(encoding="utf-8")
+        post = frontmatter.loads(existing)
+        post.content = post.content.rstrip() + "\n\n" + obs_block
+        journal_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+    else:
+        post = frontmatter.Post(
+            content=obs_block.strip(),
+            type="event",
+            created=today,
+            updated=today,
+            sessions=0,
+        )
+        journal_path.write_text(frontmatter.dumps(post), encoding="utf-8")
+
+    response_parts = [f"Observation recorded in journal/{today}.md"]
+
+    # If there's a reusable insight, also save it as a memory
+    if insight and len(insight) >= 15:
+        store = _get_store()
+        embedder = _get_embedder()
+        privacy = _get_privacy_filter()
+
+        write_result = await smart_write(
+            content=insight,
+            global_root=cfg.global_root,
+            project_root=cfg.project_root,
+            store=store,
+            embedder=embedder,
+            privacy_filter=privacy,
+            reinforce_threshold=cfg.writer.reinforce_threshold,
+            conflict_threshold=cfg.writer.conflict_threshold,
+        )
+        if write_result.action != "rejected":
+            response_parts.append(
+                f"Insight also saved to {write_result.target_file} ({write_result.action})"
+            )
+
+    # Refresh cursor context
+    _refresh_cursor_context()
+
+    return ". ".join(response_parts) + "."
 
 
 @mcp.tool()

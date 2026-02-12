@@ -263,10 +263,17 @@ async def smart_write(
     embedder: "EmbeddingProvider",
     privacy_filter: PrivacyFilter | None = None,
     memory_type: str | None = None,
+    *,
+    reinforce_threshold: float = 0.92,
+    conflict_threshold: float = 0.85,
 ) -> WriteResult:
     """Write a memory through the full smart pipeline.
 
     Pipeline: quality gate → privacy → route → embed → dedup/conflict → write.
+
+    Args:
+        reinforce_threshold: Similarity >= this → reinforce existing (default 0.92).
+        conflict_threshold: Similarity >= this → replace conflicting (default 0.85).
     """
     # 1. Quality gate
     gate = quality_gate(content, privacy_filter)
@@ -293,7 +300,7 @@ async def smart_write(
     embedding = await embedder.embed_single(content)
 
     # 5. Find similar existing memories
-    similar = store.find_similar(embedding, threshold=0.85)
+    similar = store.find_similar(embedding, threshold=conflict_threshold)
 
     # Filter to same file for conflict detection in list-type files
     same_file_similar = [s for s in similar if s.uri == _relative_uri_for_store(file_path, global_root, project_root)]
@@ -302,14 +309,14 @@ async def smart_write(
     if same_file_similar:
         best = same_file_similar[0]
 
-        if best.score >= 0.92:
+        if best.score >= reinforce_threshold:
             # Very high similarity → reinforce, don't duplicate
             store.increment_reinforcement(best.id)
             _increment_reinforcement_in_file(file_path)
             logger.info(f"Reinforced existing memory (score={best.score:.2f}): {best.content[:50]}")
             return WriteResult("reinforced", route.target_file, f"score={best.score:.2f}", route.memory_type)
 
-        elif best.score >= 0.85:
+        elif best.score >= conflict_threshold:
             # Moderate similarity → conflict, replace
             old_content = best.content.lstrip("- ").strip()
             replaced = _replace_in_file(file_path, old_content, content)
