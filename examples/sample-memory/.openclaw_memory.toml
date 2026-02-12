@@ -1,0 +1,14 @@
+[project]
+name = "e-commerce-platform"
+description = "E-commerce platform rewrite with FastAPI + Vue 3"
+
+[embedding]
+provider = "openai"
+model = "text-embedding-3-small"
+
+[privacy]
+enabled = true
+
+[search]
+default_max_tokens = 1500
+recency_half_life_days = 30
