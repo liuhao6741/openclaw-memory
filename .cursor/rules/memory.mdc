@@ -1,0 +1,53 @@
+---
+description: OpenClaw Memory — agent behavior rules for persistent memory system
+globs:
+alwaysApply: true
+---
+
+## Memory System Usage Rules
+
+You have access to a persistent memory system via MCP tools (claw-memory).
+A companion file `openclaw-memory-context.mdc` is auto-injected with your
+latest memory context — you already have it. Use the tools below for
+deeper queries and to record new knowledge.
+
+### Tool Quick Reference
+
+| Tool | When to Use |
+|------|-------------|
+| `memory_primer()` | Session start — load full context (call ONCE) |
+| `memory_search(query)` | Need to recall something specific from past sessions |
+| `memory_log(content)` | Discovered important information worth remembering |
+| `memory_session_end(...)` | User ends the session or says goodbye |
+| `memory_update_tasks(tasks_json)` | Task status changed during work |
+| `memory_read(path)` | Need to see the full content of a memory file |
+
+### When to Record Memories (memory_log)
+
+**MUST record:**
+- User states a preference: "I prefer...", "Please always...", "Don't..."
+- A technical decision is made: "Let's use X because...", "Chose Y over Z"
+- A reusable pattern is found: "The fix was...", "Root cause was...", "Solution: ..."
+- A fact about a person, project, or tool is mentioned
+
+**DO NOT record:**
+- Temporary debug output or intermediate steps
+- Raw code snippets or file paths
+- Uncertain guesses or speculation ("maybe...", "probably...")
+- Information already present in the auto-injected context
+
+### When to Search Memories (memory_search)
+
+- User mentions "before", "last time", "remember", "we discussed"
+- You need to confirm a user preference before making a suggestion
+- You need to recall a past architectural decision
+- **Tip:** Use specific keywords — "JWT authentication decision" instead of "what did we do"
+- **Tip:** Include "recent" or "最近" to trigger the fast timeline path
+
+### Session End (memory_session_end)
+
+When the user explicitly ends the session, call `memory_session_end()` with:
+- `request`: One-line summary of what the user asked for
+- `learned`: Key knowledge discovered (comma-separated)
+- `completed`: What was accomplished (comma-separated)
+- `next_steps`: What should be done next (comma-separated)

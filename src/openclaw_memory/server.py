@@ -10,6 +10,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from .config import OpenClawConfig, ensure_directories, load_config
+from .cursor_context import update_cursor_context
 from .embeddings import get_provider
 from .indexer import index_directory
 from .primer import build_primer, write_primer, write_session_to_journal, write_tasks
@@ -30,6 +31,7 @@ _global_store: VectorStore | None = None
 _embedder: Any = None
 _retriever: Retriever | None = None
 _privacy_filter: PrivacyFilter | None = None
+_context_refreshed: bool = False  # tracks first-call context refresh
 
 
 def _get_config() -> OpenClawConfig:
@@ -99,6 +101,37 @@ def _get_privacy_filter() -> PrivacyFilter:
     return _privacy_filter
 
 
+def _refresh_cursor_context() -> None:
+    """Update .cursor/rules/openclaw-memory-context.mdc with latest primer content.
+
+    Called on first tool invocation and after state-changing operations
+    (memory_log, memory_session_end, memory_update_tasks).
+    Non-blocking: errors are logged but never propagated.
+    """
+    try:
+        cfg = _get_config()
+        update_cursor_context(
+            project_root=cfg.project_root,
+            global_root=cfg.global_root,
+            project_name=cfg.project.name,
+            project_description=cfg.project.description,
+        )
+    except Exception as e:
+        logger.warning(f"Cursor context refresh failed (non-critical): {e}")
+
+
+def _ensure_first_call_refresh() -> None:
+    """Ensure cursor context file is refreshed on the very first tool call.
+
+    This guarantees the context file is up-to-date even if the agent
+    doesn't call memory_primer() first (e.g., starts with memory_search).
+    """
+    global _context_refreshed
+    if not _context_refreshed:
+        _refresh_cursor_context()
+        _context_refreshed = True
+
+
 # ---------------------------------------------------------------------------
 # MCP Server
 # ---------------------------------------------------------------------------
@@ -107,22 +140,28 @@ mcp = FastMCP(
     name="claw-memory",
     instructions=(
         "OpenClaw Memory is a persistent memory system for AI agents. "
-        "Use memory_primer() at the start of every session to load context. "
-        "Use memory_log() when you discover important information. "
-        "Use memory_search() when you need to recall specific memories. "
-        "Use memory_session_end() at the end of each session."
+        "Key context is auto-injected via Cursor rules — you already have it. "
+        "Use memory_primer() at session start for full context. "
+        "Use memory_log() to record user preferences, technical decisions, patterns, and facts. "
+        "Use memory_search(query) to recall specific past information with keyword-rich queries. "
+        "Use memory_session_end() when the user ends the session."
     ),
 )
 
 
 @mcp.tool()
 async def memory_primer() -> str:
-    """Load session context: user identity, project info, preferences, recent activity, active tasks.
+    """Load full session context: user identity, project info, preferences, recent activity, active tasks.
 
-    Call this tool ONCE at the start of every new session to load your working context.
-    Returns structured context in ~500-1000 tokens. Zero search overhead.
+    Call this tool ONCE at the start of every new session to load your complete working context.
+    Note: A lightweight version of this context is already auto-injected via Cursor rules.
+    This tool provides the full, detailed version (~500-1000 tokens). Zero search overhead.
+
+    Returns structured markdown with sections: Instructions, Entities, Preferences,
+    Recent Context (last 3 days), and Active Tasks.
     """
     cfg = _get_config()
+    _ensure_first_call_refresh()
 
     # Build primer content
     primer_content = build_primer(
@@ -152,15 +191,29 @@ async def memory_search(
     scope: str = "",
     max_tokens: int = 0,
 ) -> str:
-    """Search memories with salience scoring and token budget control.
+    """Search memories with hybrid retrieval (semantic + full-text) and salience scoring.
 
-    Call when you need to recall specific information from past sessions.
+    Call when you need to recall specific information from past sessions, e.g.:
+    - User says "remember", "before", "last time", "we discussed"
+    - You need to check a past architectural decision
+    - You want to confirm a user preference before suggesting something
+
+    Search tips:
+    - Use specific keywords: "JWT authentication decision" not "what did we decide"
+    - Include "recent" or "最近" to trigger the fast timeline path (reads last 7 days)
+    - Queries about "preference" or "偏好" trigger the fast keyword path
+
+    Results are ranked by salience = 50% semantic similarity + 20% reinforcement
+    + 20% recency + 10% access frequency, and capped at the token budget.
 
     Args:
-        query: What you want to find (natural language).
-        scope: Filter scope - "user", "journal", "agent", "global", or empty for all.
+        query: What you want to find (natural language, be keyword-rich).
+        scope: Filter scope - "user" (preferences/instructions/entities),
+               "journal" (session logs), "agent" (decisions/patterns),
+               "global" (cross-project), or "" for all scopes.
         max_tokens: Maximum tokens in results (0 = use default 1500).
     """
+    _ensure_first_call_refresh()
     retriever = _get_retriever()
     response = await retriever.search(
         query,
@@ -188,19 +241,26 @@ async def memory_log(
     content: str,
     type: str = "",
 ) -> str:
-    """Record a new memory. Auto-classifies, deduplicates, detects conflicts, and routes to the right file.
+    """Record a new memory. Auto-classifies, deduplicates, detects conflicts, and routes to the correct file.
 
-    Call when you discover information worth remembering:
-    1. User expressed a preference or requirement ("I prefer...", "Please always...")
-    2. A technical decision was made ("Decided to use...", "Chose...")
-    3. A reusable pattern was found ("The solution is...", "Root cause was...")
-    4. A new fact about people/projects/tools was learned
+    The system automatically:
+    - Routes content to the right file based on keywords (preferences.md, decisions.md, etc.)
+    - Detects near-duplicates (similarity >= 0.92) and reinforces instead of duplicating
+    - Detects conflicts (similarity 0.85-0.92) and replaces the outdated entry
+    - Filters out low-quality content (filler phrases, code snippets, speculation)
 
-    Do NOT record: temporary debug steps, code snippets, file paths, uncertain speculation.
+    Call when you discover information worth persisting across sessions:
+    1. User states a preference: "I prefer tabs over spaces" → routes to preferences.md
+    2. User sets a rule: "Always run tests before committing" → routes to instructions.md
+    3. A technical decision: "Chose PostgreSQL over MySQL because..." → routes to decisions.md
+    4. A reusable pattern: "Root cause was N+1 queries, fix: use joinedload()" → routes to patterns.md
+    5. A fact about someone/something: "Alice leads the backend team" → routes to entities.md
+
+    Do NOT record: debug output, code snippets, file paths, uncertain speculation ("maybe...", "probably...").
 
     Args:
-        content: The memory to store (plain text, one fact per call).
-        type: Optional explicit type: preference, instruction, entity, decision, pattern, event.
+        content: The memory to store (plain text, one fact per call, be concise).
+        type: Optional explicit type to override auto-routing: preference, instruction, entity, decision, pattern, event.
     """
     cfg = _get_config()
     store = _get_store()
@@ -219,7 +279,11 @@ async def memory_log(
 
     if result.action == "rejected":
         return f"Memory not stored: {result.reason}"
-    elif result.action == "reinforced":
+
+    # Refresh cursor context after successful write
+    _refresh_cursor_context()
+
+    if result.action == "reinforced":
         return f"Existing memory reinforced ({result.reason}) in {result.target_file}"
     elif result.action == "replaced":
         return f"Conflicting memory updated ({result.reason}) in {result.target_file}"
@@ -234,15 +298,20 @@ async def memory_session_end(
     completed: str = "",
     next_steps: str = "",
 ) -> str:
-    """Write structured session summary. Call at the end of each session.
+    """Write structured session summary and update project state. Call when the user ends the session.
 
-    This updates the daily journal, TASKS.md, and PRIMER.md.
+    This performs three updates atomically:
+    1. Appends a timestamped session block to today's journal (journal/YYYY-MM-DD.md)
+    2. Updates TASKS.md with next_steps as new pending tasks
+    3. Refreshes PRIMER.md and the auto-injected Cursor context file
+
+    Call when the user says goodbye, ends the conversation, or explicitly asks to wrap up.
 
     Args:
-        request: What the user asked for in this session.
-        learned: What was learned (comma-separated or single item).
+        request: One-line summary of what the user originally asked for.
+        learned: Key knowledge discovered in this session (comma-separated or single item).
         completed: What was accomplished (comma-separated or single item).
-        next_steps: What should be done next (comma-separated or single item).
+        next_steps: What should be done next — becomes pending tasks (comma-separated or single item).
     """
     cfg = _get_config()
     if not cfg.project_root:
@@ -278,16 +347,24 @@ async def memory_session_end(
         cfg.project.description,
     )
 
+    # Refresh cursor context after session end
+    _refresh_cursor_context()
+
     return f"Session summary written to {journal_path.name}. PRIMER.md and TASKS.md updated."
 
 
 @mcp.tool()
 async def memory_update_tasks(tasks_json: str) -> str:
-    """Update task tracking. Call when task status changes during a session.
+    """Update the project task list (TASKS.md). Call when task status changes during a session.
+
+    Use this to track work across sessions — tasks persist and appear in every
+    future session's primer context. Mark tasks as "done" when completed,
+    add new tasks as "pending".
 
     Args:
-        tasks_json: JSON array of task objects with keys: title, status (pending/done), progress, next_step, related_files.
-            Example: [{"title": "Implement auth", "status": "done"}, {"title": "Add tests", "status": "pending", "next_step": "Write unit tests"}]
+        tasks_json: JSON array of task objects. Required keys: title, status (pending/done).
+            Optional keys: progress (string), next_step (string), related_files (list of strings).
+            Example: [{"title": "Implement auth", "status": "done"}, {"title": "Add tests", "status": "pending", "next_step": "Write unit tests for auth module"}]
     """
     cfg = _get_config()
     if not cfg.project_root:
@@ -311,17 +388,32 @@ async def memory_update_tasks(tasks_json: str) -> str:
         cfg.project.description,
     )
 
+    # Refresh cursor context after task update
+    _refresh_cursor_context()
+
     return f"TASKS.md updated with {len(tasks)} tasks. PRIMER.md refreshed."
 
 
 @mcp.tool()
 async def memory_read(path: str) -> str:
-    """Read a memory file's complete content.
+    """Read a memory file's complete content (untruncated).
 
     Call when you need to see the full content of a specific memory file.
+    Unlike memory_search() which returns ranked excerpts, this returns the
+    entire file content including frontmatter metadata.
+
+    Common paths:
+    - "user/preferences.md" — user coding preferences
+    - "user/instructions.md" — standing instructions for the agent
+    - "user/entities.md" — people, projects, tools
+    - "agent/decisions.md" — architectural decisions (project-level)
+    - "agent/patterns.md" — reusable solution patterns (project-level)
+    - "journal/2026-02-12.md" — session log for a specific date
+    - "TASKS.md" — current task list (project-level)
+    - "PRIMER.md" — auto-generated session primer (project-level)
 
     Args:
-        path: Relative path to the memory file (e.g., "user/preferences.md", "agent/decisions.md", "journal/2026-02-12.md").
+        path: Relative path within the memory directory. Tries project memory first, then global.
     """
     cfg = _get_config()
 
@@ -336,3 +428,58 @@ async def memory_read(path: str) -> str:
             return file_path.read_text(encoding="utf-8")
 
     return f"File not found: {path}"
+
+
+# ---------------------------------------------------------------------------
+# MCP Prompts — available in Cursor's prompt selector
+# ---------------------------------------------------------------------------
+
+
+@mcp.prompt()
+def session_start() -> str:
+    """Load memory context for a new session.
+
+    Returns the full primer context including user identity, preferences,
+    recent activity, and active tasks. Use this at the start of any session.
+    """
+    cfg = _get_config()
+    _ensure_first_call_refresh()
+
+    primer_content = build_primer(
+        global_root=cfg.global_root,
+        project_root=cfg.project_root,
+        project_name=cfg.project.name,
+        project_description=cfg.project.description,
+    )
+
+    instructions_path = cfg.global_root / "user" / "instructions.md"
+    instructions = ""
+    if instructions_path.is_file():
+        instructions = instructions_path.read_text(encoding="utf-8").strip()
+
+    parts = []
+    if instructions:
+        parts.append(f"# Instructions\n\n{instructions}")
+    parts.append(f"# Context\n\n{primer_content}")
+    parts.append(
+        "\n---\n"
+        "Memory system is active. Use `memory_log()` to record important findings, "
+        "`memory_search()` for recall, and `memory_session_end()` when done."
+    )
+
+    return "\n\n".join(parts)
+
+
+@mcp.prompt()
+def session_end_template() -> str:
+    """Template for ending a session with a structured summary.
+
+    Copy and fill in this template, then call memory_session_end() with the values.
+    """
+    return (
+        "Please call `memory_session_end()` with the following information:\n\n"
+        "- **request**: [One-line summary of what was asked for]\n"
+        "- **learned**: [Key knowledge discovered, comma-separated]\n"
+        "- **completed**: [What was accomplished, comma-separated]\n"
+        "- **next_steps**: [What should be done next, comma-separated]\n"
+    )

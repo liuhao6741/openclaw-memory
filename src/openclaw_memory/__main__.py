@@ -106,25 +106,58 @@ def _run_web(args) -> None:
 
 _CURSOR_RULE = """\
 ---
-description: OpenClaw Memory usage guide for agent
+description: OpenClaw Memory — agent behavior rules for persistent memory system
 globs:
 alwaysApply: true
 ---
 
-## Memory System
+## Memory System Usage Rules
 
-You have access to a persistent memory system via MCP tools. Follow these rules:
+You have access to a persistent memory system via MCP tools (claw-memory).
+A companion file `openclaw-memory-context.mdc` is auto-injected with your
+latest memory context — you already have it. Use the tools below for
+deeper queries and to record new knowledge.
 
-1. **Session start**: Always call `memory_primer()` first to load context.
-2. **During work**: Call `memory_log(content)` when you discover:
-   - User preferences ("I prefer...", "Please always...")
-   - Technical decisions ("Decided to use...", "Chose...")
-   - Reusable patterns ("The solution is...", "Root cause was...")
-   - Facts about people/projects/tools
-3. **Need to recall**: Call `memory_search(query)` when you need past context.
-4. **Session end**: When the user says goodbye or ends the session, call `memory_session_end()` with a structured summary.
+### Tool Quick Reference
 
-Do NOT log: debug steps, code snippets, file paths, uncertain guesses.
+| Tool | When to Use |
+|------|-------------|
+| `memory_primer()` | Session start — load full context (call ONCE) |
+| `memory_search(query)` | Need to recall something specific from past sessions |
+| `memory_log(content)` | Discovered important information worth remembering |
+| `memory_session_end(...)` | User ends the session or says goodbye |
+| `memory_update_tasks(tasks_json)` | Task status changed during work |
+| `memory_read(path)` | Need to see the full content of a memory file |
+
+### When to Record Memories (memory_log)
+
+**MUST record:**
+- User states a preference: "I prefer...", "Please always...", "Don't..."
+- A technical decision is made: "Let's use X because...", "Chose Y over Z"
+- A reusable pattern is found: "The fix was...", "Root cause was...", "Solution: ..."
+- A fact about a person, project, or tool is mentioned
+
+**DO NOT record:**
+- Temporary debug output or intermediate steps
+- Raw code snippets or file paths
+- Uncertain guesses or speculation ("maybe...", "probably...")
+- Information already present in the auto-injected context
+
+### When to Search Memories (memory_search)
+
+- User mentions "before", "last time", "remember", "we discussed"
+- You need to confirm a user preference before making a suggestion
+- You need to recall a past architectural decision
+- **Tip:** Use specific keywords — "JWT authentication decision" instead of "what did we do"
+- **Tip:** Include "recent" or "最近" to trigger the fast timeline path
+
+### Session End (memory_session_end)
+
+When the user explicitly ends the session, call `memory_session_end()` with:
+- `request`: One-line summary of what the user asked for
+- `learned`: Key knowledge discovered (comma-separated)
+- `completed`: What was accomplished (comma-separated)
+- `next_steps`: What should be done next (comma-separated)
 """
 
 _GITIGNORE_CONTENT = """\
@@ -161,7 +194,10 @@ def _run_init(args) -> None:
     # --- 4. .cursor/rules/memory.mdc ---
     _init_cursor_rule(project_dir)
 
-    # --- 5. .gitignore for .openclaw_memory/ ---
+    # --- 5. .cursor/rules/openclaw-memory-context.mdc (auto-injected context) ---
+    _init_cursor_context(project_dir, global_root, project_name)
+
+    # --- 6. .gitignore for .openclaw_memory/ ---
     _init_gitignore(project_dir)
 
     # --- Summary ---
@@ -172,6 +208,7 @@ def _run_init(args) -> None:
     print(f"  Project memory: {project_dir}/.openclaw_memory/")
     print(f"  Cursor MCP    : {project_dir}/.cursor/mcp.json")
     print(f"  Cursor Rule   : {project_dir}/.cursor/rules/memory.mdc")
+    print(f"  Cursor Context: {project_dir}/.cursor/rules/openclaw-memory-context.mdc")
     print(f"  Provider      : {provider}")
     print()
 
@@ -229,11 +266,11 @@ def _init_global(global_root: Path) -> None:
             created.append(f"  {path.name}")
 
     if created:
-        print(f"[1/5] Global memory initialized: ~/.openclaw_memory/")
+        print(f"[1/6] Global memory initialized: ~/.openclaw_memory/")
         for c in created:
             print(f"       + {c}")
     else:
-        print(f"[1/5] Global memory: already exists (skipped)")
+        print(f"[1/6] Global memory: already exists (skipped)")
 
 
 def _init_project(project_dir: Path, project_name: str, provider: str) -> None:
@@ -261,11 +298,11 @@ def _init_project(project_dir: Path, project_name: str, provider: str) -> None:
         created.append("TASKS.md")
 
     if created:
-        print(f"[2/5] Project memory initialized: .openclaw_memory/")
+        print(f"[2/6] Project memory initialized: .openclaw_memory/")
         for c in created:
             print(f"       + {c}")
     else:
-        print(f"[2/5] Project memory: already exists (skipped)")
+        print(f"[2/6] Project memory: already exists (skipped)")
 
 
 def _init_cursor_mcp(project_dir: Path, python_path: str, provider: str) -> None:
@@ -304,7 +341,7 @@ def _init_cursor_mcp(project_dir: Path, python_path: str, provider: str) -> None
     existing.setdefault("mcpServers", {})
     existing["mcpServers"]["claw-memory"] = new_server
     mcp_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(f"[3/5] Cursor MCP config: .cursor/mcp.json")
+    print(f"[3/6] Cursor MCP config: .cursor/mcp.json")
 
 
 def _init_cursor_rule(project_dir: Path) -> None:
@@ -315,9 +352,52 @@ def _init_cursor_rule(project_dir: Path) -> None:
 
     if not rule_path.exists():
         rule_path.write_text(_CURSOR_RULE, encoding="utf-8")
-        print(f"[4/5] Cursor Rule created: .cursor/rules/memory.mdc")
+        print(f"[4/6] Cursor Rule created: .cursor/rules/memory.mdc")
     else:
-        print(f"[4/5] Cursor Rule: already exists (skipped)")
+        print(f"[4/6] Cursor Rule: already exists (skipped)")
+
+
+def _init_cursor_context(project_dir: Path, global_root: Path, project_name: str) -> None:
+    """Create initial .cursor/rules/openclaw-memory-context.mdc (auto-injected context)."""
+    rules_dir = project_dir / ".cursor" / "rules"
+    rules_dir.mkdir(parents=True, exist_ok=True)
+    context_path = rules_dir / "openclaw-memory-context.mdc"
+
+    # Try to generate real context if possible
+    try:
+        from .cursor_context import update_cursor_context
+
+        result = update_cursor_context(
+            project_root=project_dir,
+            global_root=global_root,
+            project_name=project_name,
+        )
+        if result:
+            print(f"[5/6] Cursor Context created: .cursor/rules/openclaw-memory-context.mdc")
+            return
+    except Exception:
+        pass
+
+    # Fallback: create a placeholder
+    if not context_path.exists():
+        placeholder = """\
+---
+description: "OpenClaw Memory — cross-session persistent context (auto-updated, do NOT edit manually)"
+globs:
+alwaysApply: true
+---
+
+# Memory Context (auto-injected)
+
+*No context yet. Complete your first session and context will appear here automatically.*
+
+Use `memory_primer()` to load full context, or just start working — the
+memory system will auto-update this file as you record and recall memories.
+"""
+        context_path.write_text(placeholder, encoding="utf-8")
+        print(f"[5/6] Cursor Context placeholder created: .cursor/rules/openclaw-memory-context.mdc")
+    else:
+        print(f"[5/6] Cursor Context: already exists (skipped)")
 
 
 def _init_gitignore(project_dir: Path) -> None:
@@ -325,9 +405,9 @@ def _init_gitignore(project_dir: Path) -> None:
     gi_path = project_dir / ".openclaw_memory" / ".gitignore"
     if not gi_path.exists():
         gi_path.write_text(_GITIGNORE_CONTENT, encoding="utf-8")
-        print(f"[5/5] Gitignore: .openclaw_memory/.gitignore")
+        print(f"[6/6] Gitignore: .openclaw_memory/.gitignore")
     else:
-        print(f"[5/5] Gitignore: already exists (skipped)")
+        print(f"[6/6] Gitignore: already exists (skipped)")
 
 
 # ---------------------------------------------------------------------------
