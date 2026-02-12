@@ -35,6 +35,12 @@ def main() -> None:
     # --- index ---
     sub.add_parser("index", help="Index memory files and exit")
 
+    # --- web ---
+    web_p = sub.add_parser("web", help="Open memory viewer in browser")
+    web_p.add_argument("--host", default="127.0.0.1", help="Host to bind (default: 127.0.0.1)")
+    web_p.add_argument("--port", type=int, default=8767, help="Port (default: 8767)")
+    web_p.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
+
     # --- backward compat: no subcommand = serve ---
     # Also support old --index flag
     parser.add_argument("--transport", choices=["stdio", "sse"], default="stdio", help=argparse.SUPPRESS)
@@ -62,6 +68,8 @@ def main() -> None:
         _run_init(args)
     elif cmd == "index":
         asyncio.run(_run_index())
+    elif cmd == "web":
+        _run_web(args)
     else:
         _run_serve(args)
 
@@ -78,6 +86,18 @@ def _run_serve(args) -> None:
     else:
         port = getattr(args, "port", 8765) or 8765
         mcp.run(transport="sse", sse_params={"port": port})
+
+
+# ---------------------------------------------------------------------------
+# web — browser-based memory viewer
+# ---------------------------------------------------------------------------
+
+def _run_web(args) -> None:
+    from .web import run_web
+    host = getattr(args, "host", "127.0.0.1") or "127.0.0.1"
+    port = getattr(args, "port", 8767) or 8767
+    open_browser = not getattr(args, "no_open", False)
+    run_web(host=host, port=port, open_browser=open_browser)
 
 
 # ---------------------------------------------------------------------------

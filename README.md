@@ -83,7 +83,28 @@ claw-memory serve --transport sse --port 8765
 
 # One-shot index of existing memory files
 claw-memory index
+
+# Open memory viewer in browser
+claw-memory web
+claw-memory web --port 8767              # Custom port
+claw-memory web --no-open                # Don't auto-open browser
 ```
+
+### Web Memory Viewer
+
+Browse and search all your memories in a clean web UI:
+
+```bash
+claw-memory web
+```
+
+This opens a local web server at `http://127.0.0.1:8767` with:
+
+- **File tree navigation** — Browse global and project memories organized by category
+- **Markdown rendering** — View memory files with full Markdown rendering and syntax highlighting
+- **Full-text search** — Search across all memory files instantly
+- **Dark / light theme** — Toggle to match your preference
+- **Metadata display** — View frontmatter metadata (type, importance, reinforcement, dates) as badges
 
 ### Manual Configuration (optional)
 

@@ -81,7 +81,28 @@ claw-memory serve --transport sse --port 8765
 
 # 一次性索引已有记忆文件
 claw-memory index
+
+# 在浏览器中查看记忆
+claw-memory web
+claw-memory web --port 8767              # 自定义端口
+claw-memory web --no-open                # 不自动打开浏览器
 ```
+
+### Web 记忆浏览器
+
+通过浏览器查看和搜索你的所有记忆：
+
+```bash
+claw-memory web
+```
+
+将在 `http://127.0.0.1:8767` 启动本地 Web 服务，提供：
+
+- **文件树导航** — 按分类浏览全局和项目记忆
+- **Markdown 渲染** — 完整的 Markdown 渲染和代码高亮
+- **全文搜索** — 即时搜索所有记忆文件
+- **深色 / 浅色主题** — 一键切换
+- **元数据展示** — 以标签形式显示 frontmatter 元数据（类型、重要性、强化次数、日期）
 
 ### 手动配置（可选）
 
