@@ -41,6 +41,13 @@ pip install -e ".[local]"          # Local embedding
 # or pip install -e ".[openai]"   # OpenAI embedding
 ```
 
+> **macOS Note**: If you see `'sqlite3.Connection' object has no attribute 'enable_load_extension'`, your Python was compiled without SQLite extension support. pyenv users can fix this with:
+> ```bash
+> LDFLAGS="-L$(brew --prefix sqlite3)/lib" CPPFLAGS="-I$(brew --prefix sqlite3)/include" \
+> PYTHON_CONFIGURE_OPTS="--enable-loadable-sqlite-extensions" pyenv install <version> --force
+> ```
+> See [Troubleshooting](docs/cursor-usage-guide.md#sqlite-扩展加载问题) for details.
+
 **The `init` command automatically handles all configuration:**
 
 - Creates `~/.openclaw_memory/user/` global memory directory with template files

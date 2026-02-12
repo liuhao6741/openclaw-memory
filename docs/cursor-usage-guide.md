@@ -56,6 +56,72 @@ claw-memory serve --log-level DEBUG
 | 启动后报 `ModuleNotFoundError` | 包未安装到正确的 Python 环境 | 确认 `mcp.json` 中的 Python 与 `pip install` 使用的是同一个 |
 | 报 `sqlite-vec` 错误 | 依赖缺失 | 运行 `pip install sqlite-vec` |
 | OpenAI 报错 | API Key 未设置 | 在 `mcp.json` 的 `env` 中设置 `OPENAI_API_KEY` |
+| `'sqlite3.Connection' object has no attribute 'enable_load_extension'` | Python 编译时未启用 SQLite 扩展加载 | 见下方 [SQLite 扩展加载问题](#sqlite-扩展加载问题) |
+
+### SQLite 扩展加载问题
+
+这是 macOS 上最常见的问题。`claw-memory` 依赖 `sqlite-vec` 向量扩展，该扩展需要通过 Python 的 `sqlite3.enable_load_extension()` 加载。如果你的 Python 编译时未启用该特性，就会报错：
+
+```
+Error executing tool memory_log: 'sqlite3.Connection' object has no attribute 'enable_load_extension'
+```
+
+**受影响的环境：**
+- macOS 系统自带 Python（`/usr/bin/python3`）
+- pyenv / asdf 编译安装但未加 SQLite 扩展标志的 Python
+
+**检测方法：**
+
+```bash
+python3 -c "import sqlite3; c = sqlite3.connect(':memory:'); print(hasattr(c, 'enable_load_extension'))"
+```
+
+输出 `True` 表示正常，`False` 表示需要修复。
+
+**修复方法（pyenv 用户）：**
+
+1. 确保已安装 Homebrew 版 SQLite：
+
+```bash
+brew install sqlite3
+```
+
+2. 使用正确参数重新编译 Python（注意关键参数是 `--enable-loadable-sqlite-extensions`）：
+
+```bash
+LDFLAGS="-L$(brew --prefix sqlite3)/lib" \
+CPPFLAGS="-I$(brew --prefix sqlite3)/include" \
+PYTHON_CONFIGURE_OPTS="--enable-loadable-sqlite-extensions" \
+pyenv install 3.11.9 --force
+```
+
+> 将 `3.11.9` 替换为你实际使用的 Python 版本。
+
+3. 重新安装 claw-memory：
+
+```bash
+pip install claw-memory[local]
+```
+
+4. 重启 Cursor。
+
+**修复方法（非 pyenv 用户）：**
+
+如果你使用系统 Python 或其他方式安装的 Python，建议通过 pyenv 安装一个支持扩展加载的 Python 版本，然后在 `.cursor/mcp.json` 中指定该 Python 路径：
+
+```json
+{
+  "mcpServers": {
+    "claw-memory": {
+      "command": "/Users/you/.pyenv/versions/3.11.9/bin/python3.11",
+      "args": ["-m", "openclaw_memory"],
+      "env": {
+        "OPENCLAW_EMBEDDING_PROVIDER": "local"
+      }
+    }
+  }
+}
+```
 
 ---
 
