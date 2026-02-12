@@ -19,6 +19,244 @@ claw-memory init
 
 ---
 
+## 检查 MCP 服务是否正常启动
+
+### 方法 1：通过 Cursor 设置面板查看
+
+1. 打开 Cursor
+2. 进入 **Settings** → **MCP**（或使用快捷键 `Cmd+Shift+P` 搜索 `MCP`）
+3. 在 MCP 服务列表中找到 **claw-memory**
+4. 状态显示为绿色/已连接 表示正常
+
+如果状态为红色/错误，点击展开查看错误日志。
+
+### 方法 2：通过终端手动启动测试
+
+```bash
+# 在项目目录下手动运行 MCP 服务器
+claw-memory serve --log-level DEBUG
+```
+
+如果启动正常，会看到服务器就绪的日志输出。按 `Ctrl+C` 退出后重启 Cursor 使用自动模式即可。
+
+### 方法 3：在 Agent 对话中验证
+
+在 Cursor Agent 模式中直接对话：
+
+> 请调用 memory_primer 加载上下文。
+
+如果 Agent 成功调用并返回了结构化上下文，说明 MCP 服务正常运行。如果 Agent 提示找不到该工具，需要检查配置。
+
+### 常见启动问题排查
+
+| 问题 | 原因 | 解决方案 |
+|------|------|---------|
+| Agent 找不到 memory 工具 | MCP 配置未生效 | 重启 Cursor，或检查 `.cursor/mcp.json` |
+| MCP 状态显示红色 | Python 路径错误 | 检查 `mcp.json` 中的 `command` 路径 |
+| 启动后报 `ModuleNotFoundError` | 包未安装到正确的 Python 环境 | 确认 `mcp.json` 中的 Python 与 `pip install` 使用的是同一个 |
+| 报 `sqlite-vec` 错误 | 依赖缺失 | 运行 `pip install sqlite-vec` |
+| OpenAI 报错 | API Key 未设置 | 在 `mcp.json` 的 `env` 中设置 `OPENAI_API_KEY` |
+
+---
+
+## Cursor 配置详解
+
+`claw-memory init` 会自动生成两个配置文件，下面说明如何手动检查和修改它们。
+
+### 1. MCP 服务配置：`.cursor/mcp.json`
+
+这是 Cursor 发现和启动 MCP 服务的核心配置。
+
+**文件位置**：`<你的项目>/.cursor/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "claw-memory": {
+      "command": "python3",
+      "args": ["-m", "openclaw_memory"],
+      "env": {
+        "OPENCLAW_EMBEDDING_PROVIDER": "local"
+      }
+    }
+  }
+}
+```
+
+#### 常用修改场景
+
+**场景 A：切换嵌入 Provider**
+
+```json
+{
+  "mcpServers": {
+    "claw-memory": {
+      "command": "python3",
+      "args": ["-m", "openclaw_memory"],
+      "env": {
+        "OPENCLAW_EMBEDDING_PROVIDER": "openai",
+        "OPENAI_API_KEY": "sk-your-key-here"
+      }
+    }
+  }
+}
+```
+
+**场景 B：使用虚拟环境中的 Python**
+
+如果你使用 pyenv / venv / conda，需要指定完整的 Python 路径：
+
+```json
+{
+  "mcpServers": {
+    "claw-memory": {
+      "command": "/Users/you/.pyenv/versions/3.12.0/bin/python",
+      "args": ["-m", "openclaw_memory"],
+      "env": {
+        "OPENCLAW_EMBEDDING_PROVIDER": "local"
+      }
+    }
+  }
+}
+```
+
+查找当前 Python 路径：
+
+```bash
+which python3
+# 或
+python3 -c "import sys; print(sys.executable)"
+```
+
+**场景 C：使用 Ollama 本地嵌入**
+
+```json
+{
+  "mcpServers": {
+    "claw-memory": {
+      "command": "python3",
+      "args": ["-m", "openclaw_memory"],
+      "env": {
+        "OPENCLAW_EMBEDDING_PROVIDER": "ollama"
+      }
+    }
+  }
+}
+```
+
+> 确保 Ollama 正在运行（`ollama serve`），并已拉取模型（`ollama pull nomic-embed-text`）。
+
+**场景 D：使用 SSE 传输模式**
+
+适用于需要通过 HTTP 连接 MCP 的场景（如 Web 客户端）：
+
+```json
+{
+  "mcpServers": {
+    "claw-memory": {
+      "command": "python3",
+      "args": ["-m", "openclaw_memory", "serve", "--transport", "sse", "--port", "8765"],
+      "env": {
+        "OPENCLAW_EMBEDDING_PROVIDER": "local"
+      }
+    }
+  }
+}
+```
+
+### 2. Agent 行为规则：`.cursor/rules/memory.mdc`
+
+这个文件告诉 Cursor Agent 如何使用记忆工具。`init` 命令会自动生成，内容如下：
+
+```markdown
+---
+description: OpenClaw Memory usage guide for agent
+globs:
+alwaysApply: true
+---
+
+## Memory System
+
+You have access to a persistent memory system via MCP tools. Follow these rules:
+
+1. **Session start**: Always call `memory_primer()` first to load context.
+2. **During work**: Call `memory_log(content)` when you discover:
+   - User preferences ("I prefer...", "Please always...")
+   - Technical decisions ("Decided to use...", "Chose...")
+   - Reusable patterns ("The solution is...", "Root cause was...")
+   - Facts about people/projects/tools
+3. **Need to recall**: Call `memory_search(query)` when you need past context.
+4. **Session end**: When the user says goodbye or ends the session,
+   call `memory_session_end()` with a structured summary.
+
+Do NOT log: debug steps, code snippets, file paths, uncertain guesses.
+```
+
+#### 自定义 Agent 行为
+
+你可以编辑这个文件来调整 Agent 的记忆行为：
+
+**示例：让 Agent 更积极地记录**
+
+```markdown
+2. **During work**: Call `memory_log(content)` for ANY of:
+   - User preferences, requirements, constraints
+   - Technical decisions and their reasoning
+   - Reusable patterns, root causes, solutions
+   - Facts about people, projects, tools, APIs
+   - Important configuration or environment details
+```
+
+**示例：会话结束时自动提醒**
+
+```markdown
+4. **Session end**: ALWAYS call `memory_session_end()` before ending,
+   even if the user doesn't explicitly say goodbye.
+   Summarize what was discussed, decided, and what should happen next.
+```
+
+**示例：限制搜索范围**
+
+```markdown
+3. **Need to recall**: Call `memory_search(query, scope="agent")`
+   for project-specific context, or `memory_search(query, scope="user")`
+   for personal preferences. Use empty scope only when unsure.
+```
+
+### 3. 项目记忆配置：`.openclaw_memory.toml`
+
+这是 OpenClaw Memory 自身的配置文件，控制嵌入模型、隐私过滤、搜索参数等。
+
+**文件位置**：`<你的项目>/.openclaw_memory.toml`
+
+```toml
+[project]
+name = "my-project"
+description = "项目描述"
+
+[embedding]
+provider = "local"                # openai | ollama | local
+
+[privacy]
+enabled = true                    # 是否启用隐私过滤
+
+[search]
+default_max_tokens = 1500         # 默认搜索 Token 预算
+recency_half_life_days = 30       # 时间衰减半衰期
+```
+
+> 完整配置说明请参阅 [configuration.md](configuration.md)。
+
+### 修改配置后的生效方式
+
+| 配置文件 | 修改后如何生效 |
+|----------|---------------|
+| `.cursor/mcp.json` | **重启 Cursor** |
+| `.cursor/rules/memory.mdc` | **新开会话**即生效（无需重启） |
+| `.openclaw_memory.toml` | **新开会话**即生效（服务器每次启动重新加载） |
+
+---
+
 ## 场景：开发一个电商平台
 
 以下按时间线模拟多个会话，展示完整的记忆生命周期。
