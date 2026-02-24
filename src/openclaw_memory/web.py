@@ -230,7 +230,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); heig
 .stat-lbl { font-size: 12px; color: var(--text2); }
 
 .turn { margin-bottom: 24px; padding: 16px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); }
-.turn-header { font-size: 12px; color: var(--text3); margin-bottom: 12px; font-family: var(--mono); }
+.turn-header { font-size: 12px; color: var(--text3); margin-bottom: 4px; font-family: var(--mono); }
+.turn-title { font-size: 13px; color: var(--text2); margin-bottom: 10px; font-weight: 500; }
 .turn h3 { font-size: 13px; font-weight: 600; color: var(--accent); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 .turn-content { font-size: 14px; line-height: 1.7; }
 .turn-content pre { background: var(--bg3); padding: 12px; border-radius: 6px; overflow-x: auto; margin: 8px 0; }
@@ -381,8 +382,12 @@ function parseTurns(content) {
   const turns = [], lines = content.split('\n');
   let cur = null;
   for (const line of lines) {
-    const m = line.match(/^## (\d{2}:\d{2}) \| (.+)$/);
-    if (m) { if (cur) turns.push(cur); cur = {time:m[1],model:m[2],lines:[]}; continue; }
+    const m = line.match(/^## (\d{2}:\d{2}) \| ([^|]+)(?: \| (.+))?$/);
+    if (m) {
+      if (cur) turns.push(cur);
+      cur = { time: m[1], model: m[2].trim(), title: (m[3] || '').trim(), lines: [] };
+      continue;
+    }
     if (/^---$/.test(line.trim()) && cur) { turns.push(cur); cur = null; continue; }
     if (cur) cur.lines.push(line);
   }
@@ -393,7 +398,8 @@ function parseTurns(content) {
 function renderTurn(t) {
   const body = t.lines.join('\n');
   const html = window.marked ? marked.parse(body) : '<pre>'+esc(body)+'</pre>';
-  return `<div class="turn"><div class="turn-header">${esc(t.time)} | ${esc(t.model)}</div><div class="turn-content">${html}</div></div>`;
+  const titleHtml = (t.title) ? `<div class="turn-title">${esc(t.title)}</div>` : '';
+  return `<div class="turn"><div class="turn-header">${esc(t.time)} | ${esc(t.model)}</div>${titleHtml}<div class="turn-content">${html}</div></div>`;
 }
 
 async function doSearch(q) {
@@ -405,8 +411,9 @@ async function doSearch(q) {
     results.map(r => {
       const highlighted = r.content.replace(new RegExp('('+escRe(q)+')','gi'),'<mark>$1</mark>');
       const projectLabel = multiProject ? `<span class="project-tag">${esc(r.project||'')}</span>` : '';
+      const titlePart = (r.title) ? `<div class="turn-title">${esc(r.title)}</div>` : '';
       return `<div class="turn search-result" onclick="loadFile('${escAttr(r.project||'')}','${escAttr(r.file)}');document.getElementById('search').value='';">
-        <div class="turn-header">${r.date} ${r.time} | ${r.model}${r.truncated?' (truncated)':''}${projectLabel}</div>
+        <div class="turn-header">${r.date} ${r.time} | ${r.model}${r.truncated?' (truncated)':''}${projectLabel}</div>${titlePart}
         <div class="turn-content"><pre style="white-space:pre-wrap;word-break:break-word;">${highlighted}</pre></div>
       </div>`;
     }).join('');

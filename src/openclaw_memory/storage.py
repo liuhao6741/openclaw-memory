@@ -91,12 +91,27 @@ def ensure_journal_dir(journal_dir: Path) -> None:
 _TURN_COUNTER: dict[str, int] = {}  # date -> counter for current process
 
 
+TITLE_MAX_LEN = 80
+
+
+def _derive_title(user_message: str, explicit_title: str = "") -> str:
+    """Use explicit_title if non-empty, else first line of user_message (truncated)."""
+    if explicit_title and explicit_title.strip():
+        t = explicit_title.replace("\n", " ").strip()
+        return t[:TITLE_MAX_LEN] if len(t) > TITLE_MAX_LEN else t
+    first = (user_message or "").strip().split("\n")[0].strip()
+    if not first:
+        return "(no title)"
+    return first[:TITLE_MAX_LEN] if len(first) > TITLE_MAX_LEN else first
+
+
 def write_turn(
     journal_dir: Path,
     user_message: str,
     agent_response: str,
     model: str = "",
     code_changes: str = "",
+    title: str = "",
 ) -> Path:
     """Append one conversation turn to today's journal file.
 
@@ -109,7 +124,8 @@ def write_turn(
     journal_path = journal_dir / f"{today}.md"
 
     model_str = model or "unknown"
-    header = f"## {time_str} | {model_str}"
+    title_str = _derive_title(user_message, title)
+    header = f"## {time_str} | {model_str} | {title_str}"
 
     lines = [header, "", "### User", ""]
     lines.append(user_message.strip() if user_message else "(empty)")
@@ -191,7 +207,7 @@ def append_agent(journal_dir: Path, chunk: str) -> bool:
 # Grep search
 # ---------------------------------------------------------------------------
 
-_TURN_HEADER_RE = re.compile(r"^## (\d{2}:\d{2}) \| (.+)$")
+_TURN_HEADER_RE = re.compile(r"^## (\d{2}:\d{2}) \| ([^|]+)(?: \| (.+))?$")
 _SEPARATOR_RE = re.compile(r"^---$")
 
 MAX_AGENT_DISPLAY = 2000  # truncate long Agent sections in search results
@@ -211,7 +227,7 @@ def grep_search(
         since: Only search files from this date onward (YYYY-MM-DD).
         max_results: Max number of matching turns to return (0 = no limit).
 
-    Returns list of dicts with keys: date, time, model, content, file, truncated.
+    Returns list of dicts with keys: date, time, model, title, content, file, truncated.
     """
     if not journal_dir.is_dir():
         return []
@@ -266,6 +282,7 @@ def grep_search(
                     "date": date_str,
                     "time": turn["time"],
                     "model": turn["model"],
+                    "title": turn.get("title", ""),
                     "content": display_content,
                     "file": md_file.name,
                     "truncated": truncated,
@@ -285,6 +302,7 @@ def _parse_turns(content: str, date_str: str, filename: str) -> list[dict]:
     current_turn_lines: list[str] = []
     current_time = ""
     current_model = ""
+    current_title = ""
 
     for line in lines:
         header_match = _TURN_HEADER_RE.match(line)
@@ -296,22 +314,26 @@ def _parse_turns(content: str, date_str: str, filename: str) -> list[dict]:
                 turns.append({
                     "time": current_time,
                     "model": current_model,
+                    "title": current_title,
                     "content": "\n".join(current_turn_lines).strip(),
                 })
 
             current_time = header_match.group(1)
-            current_model = header_match.group(2)
+            current_model = header_match.group(2).strip()
+            current_title = (header_match.group(3) or "").strip()
             current_turn_lines = [line]
         elif sep_match and current_turn_lines:
             # Turn separator — save current turn
             turns.append({
                 "time": current_time,
                 "model": current_model,
+                "title": current_title,
                 "content": "\n".join(current_turn_lines).strip(),
             })
             current_turn_lines = []
             current_time = ""
             current_model = ""
+            current_title = ""
         elif current_turn_lines:
             current_turn_lines.append(line)
 
@@ -320,6 +342,7 @@ def _parse_turns(content: str, date_str: str, filename: str) -> list[dict]:
         turns.append({
             "time": current_time,
             "model": current_model,
+            "title": current_title,
             "content": "\n".join(current_turn_lines).strip(),
         })
 

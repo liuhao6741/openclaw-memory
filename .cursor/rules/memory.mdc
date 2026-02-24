@@ -15,6 +15,7 @@ alwaysApply: true
 - `agent_response`: 你的**完整**回复（不省略、不用 "..." 或摘要）。
 - `model`: 当前模型名（如 "claude-4-opus"）。
 - `code_changes`: 若有创建/修改文件，列出（如 "- `src/foo.py` (created)"）。
+- `title`: 可选。本轮一句话摘要；不传则用用户消息首行自动生成。
 
 回复特别长时：先 `memory_log_conversation(user_message, first_part)`，再按需多次 `memory_log_conversation_append(remaining_part)`。
 

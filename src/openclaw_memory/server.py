@@ -43,6 +43,7 @@ async def memory_log_conversation(
     agent_response: str = "",
     model: str = "",
     code_changes: str = "",
+    title: str = "",
 ) -> str:
     """Record one full conversation turn to today's journal.
 
@@ -55,9 +56,12 @@ async def memory_log_conversation(
         agent_response: Your full reply (complete text, every paragraph).
         model: The model used for this response (e.g. "claude-4-opus").
         code_changes: Optional. Files created/modified, e.g. "- `src/foo.py` (created)".
+        title: Optional. One-line summary for this turn; if empty, derived from first line of user_message.
     """
     journal_dir = _get_journal_dir()
-    path = write_turn(journal_dir, user_message, agent_response, model, code_changes)
+    path = write_turn(
+        journal_dir, user_message, agent_response, model, code_changes, title=title
+    )
     return f"Recorded in {path.name}"
 
 
