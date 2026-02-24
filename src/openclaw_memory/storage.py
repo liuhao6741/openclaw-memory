@@ -47,6 +47,38 @@ def detect_journal_dir(cwd: Path | None = None) -> Path:
     return cwd / ".openclaw_memory" / "journal"
 
 
+def scan_journal_dirs(parent: Path, max_depth: int = 4) -> dict[str, Path]:
+    """Recursively scan *parent* for projects containing .openclaw_memory/journal/.
+
+    Returns ``{project_name: journal_dir_path}``.  The project name is the
+    directory name that contains ``.openclaw_memory``.
+    """
+    found: dict[str, Path] = {}
+
+    def _walk(directory: Path, depth: int) -> None:
+        if depth > max_depth:
+            return
+        try:
+            entries = sorted(directory.iterdir())
+        except PermissionError:
+            return
+        for entry in entries:
+            if not entry.is_dir():
+                continue
+            if entry.name.startswith(".") and entry.name != ".openclaw_memory":
+                continue
+            if entry.name == ".openclaw_memory":
+                journal = entry / "journal"
+                if journal.is_dir():
+                    project_name = entry.parent.name or str(entry.parent)
+                    found[project_name] = journal
+            else:
+                _walk(entry, depth + 1)
+
+    _walk(parent, 0)
+    return found
+
+
 def ensure_journal_dir(journal_dir: Path) -> None:
     """Create journal directory if it doesn't exist."""
     journal_dir.mkdir(parents=True, exist_ok=True)

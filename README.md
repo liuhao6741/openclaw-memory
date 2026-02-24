@@ -50,13 +50,18 @@ The agent will call `memory_search()` behind the scenes and find matching conver
 ### Search via Web Viewer
 
 ```bash
+# Single project (current directory)
 claw-memory web
+
+# Multiple projects — scan a parent directory
+claw-memory web --scan-dir ~/projects
 ```
 
 Opens a browser-based viewer where you can:
 - Browse journal files by date
 - Full-text search across all conversations
 - Dark/light mode
+- **Multi-project view**: use `--scan-dir` to scan a parent directory and browse all projects in one place, with sidebar grouped by project
 
 ## What Gets Recorded
 
@@ -95,7 +100,9 @@ The `.openclaw_memory/` directory is auto-gitignored to prevent accidental commi
 
 ## Project Isolation
 
-Each project gets its own `.openclaw_memory/` directory. Searching in project A never returns results from project B.
+Each project gets its own `.openclaw_memory/` directory. MCP tools always operate on the current project only.
+
+To view multiple projects together, use the web viewer with `--scan-dir`.
 
 ## License
 

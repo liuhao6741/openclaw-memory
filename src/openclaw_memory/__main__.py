@@ -29,6 +29,10 @@ def main() -> None:
     web_p.add_argument("--host", default="127.0.0.1")
     web_p.add_argument("--port", type=int, default=8767)
     web_p.add_argument("--no-open", action="store_true", help="Don't auto-open browser")
+    web_p.add_argument(
+        "--scan-dir", type=str, default="",
+        help="Parent directory to scan for multiple projects",
+    )
 
     args = parser.parse_args()
     cmd = args.command or "serve"
@@ -61,10 +65,24 @@ def _run_serve(args) -> None:
 
 def _run_web(args) -> None:
     from .web import run_web
+    from .storage import detect_journal_dir, scan_journal_dirs
+
     host = getattr(args, "host", "127.0.0.1")
     port = getattr(args, "port", 8767)
     open_browser = not getattr(args, "no_open", False)
-    run_web(host=host, port=port, open_browser=open_browser)
+    scan_dir = getattr(args, "scan_dir", "") or ""
+
+    if scan_dir:
+        projects = scan_journal_dirs(Path(scan_dir))
+        if not projects:
+            print(f"No projects found under {scan_dir}")
+            sys.exit(1)
+    else:
+        journal_dir = detect_journal_dir()
+        project_name = journal_dir.parent.parent.name or "default"
+        projects = {project_name: journal_dir}
+
+    run_web(projects=projects, host=host, port=port, open_browser=open_browser)
 
 
 # ---------------------------------------------------------------------------

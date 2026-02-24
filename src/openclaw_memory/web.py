@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .storage import detect_journal_dir, grep_search, _parse_turns
+from .storage import grep_search, _parse_turns
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class WebHandler(BaseHTTPRequestHandler):
-    journal_dir: Path
+    projects: dict[str, Path]  # {project_name: journal_dir}
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -31,11 +31,15 @@ class WebHandler(BaseHTTPRequestHandler):
 
         if path == "/":
             self._send_html(_HTML_PAGE)
+        elif path == "/api/projects":
+            self._send_json(self._list_projects())
         elif path == "/api/files":
-            self._send_json(self._list_files())
+            project = params.get("project", [""])[0]
+            self._send_json(self._list_files(project))
         elif path == "/api/file":
+            project = params.get("project", [""])[0]
             name = params.get("name", [""])[0]
-            self._send_json(self._read_file(name))
+            self._send_json(self._read_file(project, name))
         elif path == "/api/search":
             q = params.get("q", [""])[0]
             since = params.get("since", [""])[0]
@@ -43,29 +47,51 @@ class WebHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
-    def _list_files(self) -> list[dict]:
-        if not self.journal_dir.is_dir():
+    def _list_projects(self) -> list[dict]:
+        result = []
+        for name, journal_dir in sorted(self.projects.items()):
+            file_count = 0
+            if journal_dir.is_dir():
+                file_count = len(list(journal_dir.glob("*.md")))
+            result.append({"name": name, "file_count": file_count})
+        return result
+
+    def _list_files(self, project: str) -> list[dict]:
+        journal_dir = self.projects.get(project)
+        if not journal_dir or not journal_dir.is_dir():
             return []
-        files = sorted(self.journal_dir.glob("*.md"), reverse=True)
+        files = sorted(journal_dir.glob("*.md"), reverse=True)
         return [
-            {"name": f.name, "date": f.stem, "size": f.stat().st_size}
+            {"project": project, "name": f.name, "date": f.stem, "size": f.stat().st_size}
             for f in files
         ]
 
-    def _read_file(self, name: str) -> dict:
+    def _read_file(self, project: str, name: str) -> dict:
         if not name or ".." in name or "/" in name:
             return {"error": "Invalid filename"}
-        path = self.journal_dir / name
+        journal_dir = self.projects.get(project)
+        if not journal_dir:
+            return {"error": f"Unknown project: {project}"}
+        path = journal_dir / name
         if not path.is_file():
             return {"error": f"File not found: {name}"}
         content = path.read_text(encoding="utf-8")
         turns = _parse_turns(content, path.stem, name)
-        return {"name": name, "date": path.stem, "content": content, "turn_count": len(turns)}
+        return {
+            "project": project, "name": name, "date": path.stem,
+            "content": content, "turn_count": len(turns),
+        }
 
     def _search(self, query: str, since: str) -> list[dict]:
         if not query:
             return []
-        return grep_search(self.journal_dir, query, since=since)
+        all_results: list[dict] = []
+        for project_name, journal_dir in sorted(self.projects.items()):
+            results = grep_search(journal_dir, query, since=since)
+            for r in results:
+                r["project"] = project_name
+            all_results.extend(results)
+        return all_results
 
     def _send_json(self, data: Any) -> None:
         body = json.dumps(data, ensure_ascii=False, default=str).encode("utf-8")
@@ -92,17 +118,22 @@ class WebHandler(BaseHTTPRequestHandler):
 # ---------------------------------------------------------------------------
 
 
-def run_web(host: str = "127.0.0.1", port: int = 8767, open_browser: bool = True) -> None:
-    journal_dir = detect_journal_dir()
-
-    handler_class = type("Handler", (WebHandler,), {"journal_dir": journal_dir})
+def run_web(
+    projects: dict[str, Path],
+    host: str = "127.0.0.1",
+    port: int = 8767,
+    open_browser: bool = True,
+) -> None:
+    handler_class = type("Handler", (WebHandler,), {"projects": projects})
     server = HTTPServer((host, port), handler_class)
     url = f"http://{host}:{port}"
 
     print(f"\n  OpenClaw Memory — Chat History Viewer")
     print(f"  {'─' * 40}")
-    print(f"  URL     : {url}")
-    print(f"  Journal : {journal_dir}")
+    print(f"  URL      : {url}")
+    print(f"  Projects : {len(projects)}")
+    for name, path in sorted(projects.items()):
+        print(f"    {name} → {path}")
     print(f"  {'─' * 40}")
     print(f"  Press Ctrl+C to stop.\n")
 
@@ -166,12 +197,23 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); heig
 .layout { display: flex; margin-top: 52px; height: calc(100vh - 52px); }
 
 .sidebar {
-  width: 240px; min-width: 240px; background: var(--bg2);
+  width: 260px; min-width: 260px; background: var(--bg2);
   border-right: 1px solid var(--border); overflow-y: auto; padding: 8px 0;
 }
+.project-group { margin-bottom: 4px; }
+.project-header {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 16px 4px; font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text2); cursor: pointer; user-select: none;
+}
+.project-header:hover { color: var(--text); }
+.project-header .arrow { font-size: 10px; transition: transform 0.15s; }
+.project-header.collapsed .arrow { transform: rotate(-90deg); }
+.project-files { overflow: hidden; }
+.project-files.collapsed { display: none; }
 .file-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 16px; font-size: 13px; cursor: pointer; color: var(--text);
+  padding: 5px 16px 5px 28px; font-size: 13px; cursor: pointer; color: var(--text);
 }
 .file-item:hover { background: var(--bg3); }
 .file-item.active { background: var(--accent-bg); color: var(--accent); font-weight: 500; }
@@ -200,6 +242,10 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); heig
 .search-result:hover { border-color: var(--accent); }
 .search-result mark { background: #fff8c5; padding: 1px 2px; border-radius: 2px; }
 [data-theme="dark"] .search-result mark { background: #3d2e00; }
+.project-tag {
+  display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 4px;
+  background: var(--accent-bg); color: var(--accent); margin-left: 8px; font-weight: 500;
+}
 
 .empty { text-align: center; padding: 60px; color: var(--text2); }
 
@@ -211,7 +257,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); heig
 <header class="header">
   <div class="header-title">OpenClaw Memory</div>
   <input class="search-box" id="search" type="text" placeholder="Search chat history..." autocomplete="off">
-  <button class="btn-icon" id="themeBtn" title="Toggle theme">🌓</button>
+  <button class="btn-icon" id="themeBtn" title="Toggle theme">&#x1f313;</button>
 </header>
 
 <div class="layout">
@@ -220,20 +266,32 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); heig
 </div>
 
 <script>
-let files = [], currentFile = null, searchTimer = null;
+let projectsData = [];   // [{name, file_count}]
+let filesCache = {};      // {projectName: [{project, name, date, size}]}
+let currentProject = null;
+let currentFile = null;
+let searchTimer = null;
+let multiProject = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && matchMedia('(prefers-color-scheme:dark)').matches))
     document.documentElement.setAttribute('data-theme','dark');
 
-  files = await (await fetch('/api/files')).json();
+  projectsData = await (await fetch('/api/projects')).json();
+  multiProject = projectsData.length > 1;
+
+  // Pre-fetch file lists for all projects
+  await Promise.all(projectsData.map(async p => {
+    filesCache[p.name] = await (await fetch('/api/files?project='+encodeURIComponent(p.name))).json();
+  }));
+
   renderSidebar();
   showWelcome();
 
   document.getElementById('search').addEventListener('input', e => {
     clearTimeout(searchTimer);
     const q = e.target.value.trim();
-    if (!q) { currentFile ? loadFile(currentFile) : showWelcome(); return; }
+    if (!q) { currentFile ? loadFile(currentProject, currentFile) : showWelcome(); return; }
     searchTimer = setTimeout(() => doSearch(q), 300);
   });
 
@@ -252,24 +310,70 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function renderSidebar() {
   const sb = document.getElementById('sidebar');
-  if (!files.length) { sb.innerHTML = '<div class="empty">No journal files</div>'; return; }
-  sb.innerHTML = files.map(f =>
-    `<div class="file-item${currentFile===f.name?' active':''}" data-name="${f.name}">
-      <span>📅</span><span class="file-date">${f.date}</span>
-    </div>`
-  ).join('');
+  const totalFiles = Object.values(filesCache).reduce((s,arr) => s + arr.length, 0);
+  if (!totalFiles) { sb.innerHTML = '<div class="empty">No journal files</div>'; return; }
+
+  let html = '';
+  for (const p of projectsData) {
+    const files = filesCache[p.name] || [];
+    if (!files.length) continue;
+
+    const collapsed = localStorage.getItem('collapse_'+p.name) === '1';
+
+    if (multiProject) {
+      html += `<div class="project-group">
+        <div class="project-header${collapsed?' collapsed':''}" data-project="${esc(p.name)}">
+          <span class="arrow">&#9660;</span>
+          <span>${esc(p.name)}</span>
+          <span style="color:var(--text3);font-weight:400;font-size:10px;">(${files.length})</span>
+        </div>
+        <div class="project-files${collapsed?' collapsed':''}">`;
+    }
+
+    for (const f of files) {
+      const isActive = currentProject === p.name && currentFile === f.name;
+      html += `<div class="file-item${isActive?' active':''}" data-project="${esc(p.name)}" data-name="${esc(f.name)}">
+        <span style="font-size:12px;">&#x1f4c5;</span><span class="file-date">${esc(f.date)}</span>
+      </div>`;
+    }
+
+    if (multiProject) {
+      html += `</div></div>`;
+    }
+  }
+
+  sb.innerHTML = html;
+
   sb.querySelectorAll('.file-item').forEach(el =>
-    el.addEventListener('click', () => { loadFile(el.dataset.name); document.getElementById('search').value=''; })
+    el.addEventListener('click', () => {
+      loadFile(el.dataset.project, el.dataset.name);
+      document.getElementById('search').value = '';
+    })
   );
+
+  if (multiProject) {
+    sb.querySelectorAll('.project-header').forEach(el =>
+      el.addEventListener('click', () => {
+        el.classList.toggle('collapsed');
+        const filesDiv = el.nextElementSibling;
+        filesDiv.classList.toggle('collapsed');
+        localStorage.setItem('collapse_'+el.dataset.project, filesDiv.classList.contains('collapsed') ? '1' : '0');
+      })
+    );
+  }
 }
 
-async function loadFile(name) {
+async function loadFile(project, name) {
+  currentProject = project;
   currentFile = name;
   renderSidebar();
-  const data = await (await fetch('/api/file?name='+encodeURIComponent(name))).json();
+  const url = '/api/file?project='+encodeURIComponent(project)+'&name='+encodeURIComponent(name);
+  const data = await (await fetch(url)).json();
   if (data.error) { document.getElementById('main').innerHTML = `<div class="empty">${esc(data.error)}</div>`; return; }
   const turns = parseTurns(data.content);
-  document.getElementById('main').innerHTML = `<h2 style="margin-bottom:16px;font-size:16px;">📅 ${esc(data.date)} <span style="color:var(--text3);font-weight:400;">(${turns.length} conversations)</span></h2>` +
+  let heading = `&#x1f4c5; ${esc(data.date)} <span style="color:var(--text3);font-weight:400;">(${turns.length} conversations)</span>`;
+  if (multiProject) heading = `<span class="project-tag">${esc(project)}</span> ` + heading;
+  document.getElementById('main').innerHTML = `<h2 style="margin-bottom:16px;font-size:16px;">${heading}</h2>` +
     turns.map(t => renderTurn(t)).join('');
 }
 
@@ -300,26 +404,29 @@ async function doSearch(q) {
   main.innerHTML = `<p style="color:var(--text2);margin-bottom:16px;">Found <b>${results.length}</b> conversation(s) matching "<b>${esc(q)}</b>"</p>` +
     results.map(r => {
       const highlighted = r.content.replace(new RegExp('('+escRe(q)+')','gi'),'<mark>$1</mark>');
-      return `<div class="turn search-result" onclick="loadFileAndScroll('${r.file}')">
-        <div class="turn-header">${r.date} ${r.time} | ${r.model}${r.truncated?' (truncated)':''}</div>
+      const projectLabel = multiProject ? `<span class="project-tag">${esc(r.project||'')}</span>` : '';
+      return `<div class="turn search-result" onclick="loadFile('${escAttr(r.project||'')}','${escAttr(r.file)}');document.getElementById('search').value='';">
+        <div class="turn-header">${r.date} ${r.time} | ${r.model}${r.truncated?' (truncated)':''}${projectLabel}</div>
         <div class="turn-content"><pre style="white-space:pre-wrap;word-break:break-word;">${highlighted}</pre></div>
       </div>`;
     }).join('');
 }
 
-function loadFileAndScroll(name) { document.getElementById('search').value=''; loadFile(name); }
-
 function showWelcome() {
-  const total = files.length;
+  const totalFiles = Object.values(filesCache).reduce((s,arr) => s + arr.length, 0);
+  const projectCount = projectsData.length;
+  let statsHtml = `<div class="stat"><div class="stat-val">${totalFiles}</div><div class="stat-lbl">Journal Files</div></div>`;
+  if (multiProject) statsHtml = `<div class="stat"><div class="stat-val">${projectCount}</div><div class="stat-lbl">Projects</div></div>` + statsHtml;
   document.getElementById('main').innerHTML = `<div class="welcome">
     <h1>Chat History</h1>
     <p>Browse and search your AI conversation history.</p>
-    <div class="stat-row"><div class="stat"><div class="stat-val">${total}</div><div class="stat-lbl">Journal Files</div></div></div>
+    <div class="stat-row">${statsHtml}</div>
     <p style="font-size:13px;color:var(--text3);margin-top:16px;">Press <kbd style="padding:2px 6px;background:var(--bg2);border:1px solid var(--border);border-radius:4px;font-size:12px;">/</kbd> to search</p>
   </div>`;
 }
 
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function escAttr(s) { return s.replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function escRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'); }
 </script>
 </body>
