@@ -1,3 +1,4 @@
 """OpenClaw Memory — record and search AI chat history."""
 
-__version__ = "1.0.1"
+# Keep in sync with pyproject.toml [project] version
+__version__ = "1.2.1"
