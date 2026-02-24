@@ -139,6 +139,7 @@ def _run_init() -> None:
     new_server = {
         "command": python_path,
         "args": ["-m", "openclaw_memory"],
+        "disabled": False,
     }
 
     if mcp_path.exists():
