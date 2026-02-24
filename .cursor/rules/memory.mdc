@@ -6,19 +6,21 @@ alwaysApply: true
 
 ## Chat History Recording
 
-You have access to a chat history system via MCP tools (claw-memory).
-It automatically records every conversation turn to local Markdown files.
+### 强制要求（不可省略）
 
-### Rules
+**每次回复的最后一步必须调用 `memory_log_conversation()`，不可省略。**  
+无论回复长短、是否写代码、是否只给一句话，都必须在结束前执行一次该工具，否则对话不会写入 journal。
 
-**At the end of every reply**, call `memory_log_conversation()`:
-- `user_message`: The **complete** user message (full text, no truncation).
-- `agent_response`: Your **complete** reply (every paragraph, no "..." or summary).
-- `model`: The model you are using (e.g. "claude-4-opus").
-- `code_changes`: If you created or modified files, list them (e.g. "- `src/foo.py` (created)").
+- `user_message`: 用户在本轮的**完整**输入（不截断）。
+- `agent_response`: 你的**完整**回复（不省略、不用 "..." 或摘要）。
+- `model`: 当前模型名（如 "claude-4-opus"）。
+- `code_changes`: 若有创建/修改文件，列出（如 "- `src/foo.py` (created)"）。
 
-If your reply is very long, call `memory_log_conversation(user_message, first_part)` then
-`memory_log_conversation_append(remaining_part)` for each remaining chunk.
+回复特别长时：先 `memory_log_conversation(user_message, first_part)`，再按需多次 `memory_log_conversation_append(remaining_part)`。
+
+---
+
+You have access to a chat history system via MCP tools (claw-memory); it writes each turn to `.openclaw_memory/journal/YYYY-MM-DD.md`. The above step is mandatory for every reply.
 
 ### Search
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "claw-memory"
-version = "1.0.1"
+version = "1.0.2"
 description = "Record and search your AI chat history. Markdown files, zero dependencies beyond MCP."
 readme = "README.md"
 license = "Apache-2.0"
