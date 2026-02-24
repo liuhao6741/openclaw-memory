@@ -1,65 +1,28 @@
 ---
-description: OpenClaw Memory — agent behavior rules for persistent memory system
+description: OpenClaw Memory — auto-record chat history
 globs:
 alwaysApply: true
 ---
 
-## Memory System Usage Rules
+## Chat History Recording
 
-You have access to a persistent memory system via MCP tools (claw-memory).
-A companion file `openclaw-memory-context.mdc` is auto-injected with your
-latest memory context — you already have it. Use the tools below for
-deeper queries and to record new knowledge.
+You have access to a chat history system via MCP tools (claw-memory).
+It automatically records every conversation turn to local Markdown files.
 
-### Tool Quick Reference
+### Rules
 
-| Tool | When to Use |
-|------|-------------|
-| `memory_primer()` | Session start — load full context (call ONCE) |
-| `memory_search(query)` | Need to recall something specific (compact index by default) |
-| `memory_search(query, detail=true)` | Need full content of search results |
-| `memory_log(content)` | Discovered important information worth remembering |
-| `memory_observe(action, result, files, insight)` | After significant coding actions |
-| `memory_session_end(...)` | User ends the session or says goodbye |
-| `memory_update_tasks(tasks_json)` | Task status changed during work |
-| `memory_read(path)` | Need to see the full content of a memory file |
+**At the end of every reply**, call `memory_log_conversation()`:
+- `user_message`: The **complete** user message (full text, no truncation).
+- `agent_response`: Your **complete** reply (every paragraph, no "..." or summary).
+- `model`: The model you are using (e.g. "claude-4-opus").
+- `code_changes`: If you created or modified files, list them (e.g. "- `src/foo.py` (created)").
 
-### When to Record Memories (memory_log)
+If your reply is very long, call `memory_log_conversation(user_message, first_part)` then
+`memory_log_conversation_append(remaining_part)` for each remaining chunk.
 
-**MUST record:**
-- User states a preference: "I prefer...", "Please always...", "Don't..."
-- A technical decision is made: "Let's use X because...", "Chose Y over Z"
-- A reusable pattern is found: "The fix was...", "Root cause was...", "Solution: ..."
-- A fact about a person, project, or tool is mentioned
+### Search
 
-**DO NOT record:**
-- Temporary debug output or intermediate steps
-- Raw code snippets or file paths
-- Uncertain guesses or speculation ("maybe...", "probably...")
-- Information already present in the auto-injected context
-
-### When to Record Observations (memory_observe)
-
-Call after completing a significant action to build a structured timeline:
-- Completed a code change or refactor
-- Debugged and found a root cause
-- Ran tests and discovered failures/fixes
-- Made an architectural decision
-
-Provide: `action` (what you did), `result` (outcome), `files` (touched), `insight` (reusable lesson).
-
-### When to Search Memories (memory_search)
-
+Use `memory_search(query)` when:
 - User mentions "before", "last time", "remember", "we discussed"
-- You need to confirm a user preference before making a suggestion
-- You need to recall a past architectural decision
-- **Tip:** Use specific keywords — "JWT authentication decision" instead of "what did we do"
-- **Tip:** Include "recent" or "最近" to trigger the fast timeline path
-
-### Session End (memory_session_end)
-
-When the user explicitly ends the session, call `memory_session_end()` with:
-- `request`: One-line summary of what the user asked for
-- `learned`: Key knowledge discovered (comma-separated)
-- `completed`: What was accomplished (comma-separated)
-- `next_steps`: What should be done next (comma-separated)
+- You need to recall a past conversation
+- Use `since="YYYY-MM-DD"` to narrow by date

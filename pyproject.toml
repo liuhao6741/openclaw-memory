@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "claw-memory"
-version = "0.4.0"
-description = "A lightweight MCP memory server for AI agents. Markdown-first, zero external dependencies."
+version = "1.0.0"
+description = "Record and search your AI chat history. Markdown files, zero dependencies beyond MCP."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [{ name = "OpenClaw Contributors" }]
-keywords = ["mcp", "memory", "agent", "markdown", "ai"]
+keywords = ["mcp", "memory", "agent", "chat-history", "markdown"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
@@ -22,24 +22,11 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=1.0.0",
-    "sqlite-vec>=0.1.6",
-    "python-frontmatter>=1.1.0",
-    "watchfiles>=1.0.0",
-    "tiktoken>=0.8.0",
 ]
 
 [project.optional-dependencies]
-openai = ["openai>=1.0.0"]
-ollama = ["ollama>=0.4.0"]
-local = ["sentence-transformers>=3.0.0"]
-all = [
-    "claw-memory[openai]",
-    "claw-memory[ollama]",
-    "claw-memory[local]",
-]
 dev = [
     "pytest>=8.0.0",
-    "pytest-asyncio>=0.24.0",
     "ruff>=0.8.0",
 ]
 
@@ -51,7 +38,6 @@ packages = ["src/openclaw_memory"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py311"

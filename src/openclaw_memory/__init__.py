@@ -1,3 +1,3 @@
-"""OpenClaw Memory — A lightweight MCP memory server for AI agents."""
+"""OpenClaw Memory — record and search AI chat history."""
 
-__version__ = "0.4.0"
+__version__ = "1.0.0"

@@ -1,257 +1,102 @@
 # OpenClaw Memory
 
-[![PyPI version](https://img.shields.io/pypi/v/claw-memory.svg)](https://pypi.org/project/claw-memory/)
+**Your AI conversations disappear after every session. OpenClaw Memory fixes that.**
 
-A lightweight MCP memory server designed for AI agents. Markdown files as the single source of truth, zero external dependencies.
+Every time you chat with an AI coding assistant, valuable context — decisions, solutions, debugging steps — vanishes when the session ends. The next session starts from zero.
 
-[中文文档](README_CN.md)
+OpenClaw Memory automatically records every conversation turn to local Markdown files, making your entire AI chat history searchable and browsable. No cloud, no database — just plain text files in your project.
 
-## Features
+## How It Works
 
-- **Markdown-first** — All memories stored as human-readable Markdown files, git-friendly
-- **Zero dependencies** — Pure Python + SQLite, no external services required
-- **Smart writing** — Quality gate, auto-routing, conflict detection, reinforcement counting
-- **Salience-based retrieval** — Multi-dimensional scoring: semantic similarity + reinforcement + recency + access frequency
-- **Token budget aware** — Never exceed your context window budget
-- **Session primer** — Cold-start with structured context in ~500 tokens
-- **Project isolation** — Global user memory + per-project working memory
-- **Privacy protection** — Regex-based sensitive information filtering
-- **V1 zero LLM dependency** — Only requires an embedding model (local option available)
+```
+You chat with AI  →  Every turn auto-saved to .openclaw_memory/journal/2026-02-24.md
+                  →  Search past conversations via MCP tool or web viewer
+```
+
+Each journal entry captures the complete conversation: timestamps, model used, your input, the AI's full response, and any code changes made.
 
 ## Quick Start
 
-### 1. Install + Initialize (two commands)
+**1. Install**
 
 ```bash
-# Step 1: Install from PyPI (recommended)
-pip install claw-memory[local]          # Local embedding (works offline)
-# or pip install claw-memory[openai]   # OpenAI embedding (more accurate)
-# or pip install claw-memory[ollama]   # Ollama embedding
+pip install claw-memory
+```
 
-# Step 2: Initialize in any project, then restart Cursor
-cd /path/to/your/project
+**2. Initialize in your project**
+
+```bash
+cd your-project
 claw-memory init
 ```
 
-**Or install from source** (for development):
+This creates:
+- `.openclaw_memory/journal/` — where chat history lives
+- `.cursor/mcp.json` — connects the MCP server to Cursor
+- `.cursor/rules/memory.mdc` — tells the AI agent to auto-record
 
-```bash
-cd /path/to/claw-memory
-pip install -e ".[local]"          # Local embedding
-# or pip install -e ".[openai]"   # OpenAI embedding
-```
+**3. Restart Cursor** — that's it. Every conversation is now being recorded.
 
-> **macOS Note**: If you see `'sqlite3.Connection' object has no attribute 'enable_load_extension'`, your Python was compiled without SQLite extension support. pyenv users can fix this with:
-> ```bash
-> LDFLAGS="-L$(brew --prefix sqlite3)/lib" CPPFLAGS="-I$(brew --prefix sqlite3)/include" \
-> PYTHON_CONFIGURE_OPTS="--enable-loadable-sqlite-extensions" pyenv install <version> --force
-> ```
-> See [Troubleshooting](docs/cursor-usage-guide.md#sqlite-扩展加载问题) for details.
+## Searching Past Conversations
 
-**The `init` command automatically handles all configuration:**
+The AI agent can search your history automatically. Just ask naturally:
 
-- Creates `~/.openclaw_memory/user/` global memory directory with template files
-- Creates `.openclaw_memory/` project memory directory (journal, agent, etc.)
-- Creates `.openclaw_memory.toml` project config (auto-detects embedding provider)
-- Creates `.cursor/mcp.json` MCP server configuration
-- Creates `.cursor/rules/memory.mdc` agent usage guide
-- Creates `.openclaw_memory/.gitignore` (keeps index files out of git)
+> "We discussed this before, what was the solution?"
+>
+> "Last time we fixed a similar bug, how did we do it?"
 
-Optional flags:
+The agent will call `memory_search()` behind the scenes and find matching conversations.
 
-```bash
-# Specify embedding provider
-claw-memory init --provider openai
-
-# Specify project name
-claw-memory init --name "my-awesome-project"
-
-# Initialize global memory only (skip project-level files)
-claw-memory init --global-only
-```
-
-**After init completes, restart Cursor and the agent will automatically use the memory tools.**
-
-### Other Commands
-
-```bash
-# Start MCP server (usually called automatically by Cursor)
-claw-memory serve
-
-# SSE mode (for web clients)
-claw-memory serve --transport sse --port 8765
-
-# One-shot index of existing memory files
-claw-memory index
-
-# Open memory viewer in browser
-claw-memory web
-claw-memory web --port 8767              # Custom port
-claw-memory web --no-open                # Don't auto-open browser
-```
-
-### Web Memory Viewer
-
-Browse and search all your memories in a clean web UI:
+### Search via Web Viewer
 
 ```bash
 claw-memory web
 ```
 
-This opens a local web server at `http://127.0.0.1:8767` with:
+Opens a browser-based viewer where you can:
+- Browse journal files by date
+- Full-text search across all conversations
+- Dark/light mode
 
-- **File tree navigation** — Browse global and project memories organized by category
-- **Markdown rendering** — View memory files with full Markdown rendering and syntax highlighting
-- **Full-text search** — Search across all memory files instantly
-- **Dark / light theme** — Toggle to match your preference
-- **Metadata display** — View frontmatter metadata (type, importance, reinforcement, dates) as badges
+## What Gets Recorded
 
-### Manual Configuration (optional)
+Each conversation turn is saved as Markdown:
 
-If you prefer not to use `init`, you can manually create `.cursor/mcp.json`:
+```markdown
+## 14:32 | claude-4-opus
 
-```json
-{
-  "mcpServers": {
-    "claw-memory": {
-      "command": "python",
-      "args": ["-m", "openclaw_memory"],
-      "env": {
-        "OPENCLAW_EMBEDDING_PROVIDER": "openai",
-        "OPENAI_API_KEY": "sk-..."
-      }
-    }
-  }
-}
+### User
+
+How do I fix the N+1 query problem in the user list endpoint?
+
+### Agent
+
+The issue is in `api/users.py` where each user triggers a separate query for their roles...
+
+### Code Changes
+
+- `api/users.py` (modified)
+- `tests/test_users.py` (modified)
 ```
 
 ## MCP Tools
 
-| Tool | When to use | Description |
-|------|-------------|-------------|
-| `memory_primer()` | Start of every session | Returns structured context: user identity, project info, preferences, recent activity, active tasks |
-| `memory_search(query, scope?, max_tokens?)` | When you need to recall specific information | Semantic search with salience scoring and token budget control |
-| `memory_log(content, type?)` | When you discover information worth remembering | Auto-classifies, deduplicates, detects conflicts, and routes to the right file |
-| `memory_session_end(summary)` | End of session | Writes structured session summary, updates tasks and primer |
-| `memory_update_tasks(tasks_json)` | When task status changes | Updates TASKS.md and primer |
-| `memory_read(path)` | When you need full file content | Reads and returns complete Markdown file |
+| Tool | Purpose |
+|---|---|
+| `memory_log_conversation` | Record a complete conversation turn |
+| `memory_log_conversation_append` | Append to the last turn (for long responses) |
+| `memory_search` | Search chat history by keyword |
 
-> **Detailed usage examples**: See [Cursor Usage Guide](docs/cursor-usage-guide.md) for a complete walkthrough of a multi-session scenario showing how the agent uses each tool in practice.
+## Storage
 
-## How It Works
+All data is stored locally in `.openclaw_memory/journal/` as plain Markdown files — one file per day. No database, no cloud sync. You own your data.
 
-### Memory Directory Structure
+The `.openclaw_memory/` directory is auto-gitignored to prevent accidental commits of chat history.
 
-```
-~/.openclaw_memory/              # Global (cross-project)
-├── config.toml                  # Global configuration
-├── user/
-│   ├── preferences.md           # Your preferences
-│   ├── instructions.md          # Your rules for the agent
-│   └── entities.md              # People, tools, projects
-└── index.db                     # Global vector index
+## Project Isolation
 
-<project>/.openclaw_memory/      # Per-project
-├── .openclaw_memory.toml        # Project configuration
-├── PRIMER.md                    # Auto-maintained session primer
-├── TASKS.md                     # Active task tracking
-├── journal/YYYY-MM-DD.md        # Structured daily session logs
-├── agent/
-│   ├── patterns.md              # Reusable solution patterns
-│   └── decisions.md             # Architecture decisions (ADRs)
-└── index.db                     # Project vector index
-```
-
-### Smart Writing Pipeline
-
-```
-Input --> Quality Gate --> Privacy Filter --> Smart Router --> Reinforcement/Conflict Check --> Write
-```
-
-1. **Quality Gate**: Rejects noise (too short, filler phrases, pure code, speculation)
-2. **Privacy Filter**: Blocks API keys, passwords, internal IPs (configurable regex)
-3. **Smart Router**: Auto-classifies content to the right file by keyword patterns
-4. **Reinforcement**: If highly similar memory exists (>0.92), increments reinforcement count instead of duplicating
-5. **Conflict Detection**: If similar memory exists (0.85-0.92) with new info, replaces the old entry
-
-### Salience-Based Retrieval
-
-```
-salience = 0.50 * semantic_similarity
-         + 0.20 * reinforcement_score
-         + 0.20 * recency_decay
-         + 0.10 * access_frequency
-```
-
-Memories that are frequently mentioned (high reinforcement), recently updated, and often recalled naturally rank higher — no manual importance tuning needed.
-
-### Token Budget
-
-```python
-# Returns as many relevant memories as fit within 1500 tokens
-results = memory_search("webhook handling", max_tokens=1500)
-```
-
-## Configuration
-
-### Project config (`.openclaw_memory.toml`)
-
-```toml
-[project]
-name = "my-project"
-description = "E-commerce platform"
-
-[embedding]
-provider = "openai"              # openai | ollama | local
-model = "text-embedding-3-small" # optional, uses provider default
-
-[privacy]
-enabled = true
-patterns = [
-    'sk-[a-zA-Z0-9]{20,}',
-    'ghp_[a-zA-Z0-9]{36}',
-    'password\s*[:=]\s*\S+',
-]
-
-[search]
-default_max_tokens = 1500
-recency_half_life_days = 30
-```
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENCLAW_EMBEDDING_PROVIDER` | Embedding provider | `local` |
-| `OPENCLAW_EMBEDDING_MODEL` | Model name | Provider default |
-| `OPENCLAW_MEMORY_ROOT` | Override memory root path | Auto-detect |
-| `OPENAI_API_KEY` | OpenAI API key | — |
-
-## Embedding Providers
-
-| Provider | Dimension | Dependency | Use case |
-|----------|-----------|------------|----------|
-| OpenAI `text-embedding-3-small` | 1536 | API key | Best accuracy |
-| Ollama `nomic-embed-text` | 768 | Local Ollama | Offline / privacy |
-| sentence-transformers `all-MiniLM-L6-v2` | 384 | Pure local | Zero dependency |
-
-## Design Decisions
-
-This project was designed by analyzing four existing memory systems:
-
-- **memsearch**: Markdown as source of truth, content-hash dedup, hybrid search
-- **OpenViking**: Directory-based organization, L0/L1/L2 progressive loading
-- **memU**: Reinforcement counting for importance, salience scoring formula
-- **claude-mem**: Structured session summaries, project isolation, privacy tags
-
-Key differences from all four:
-
-- **Zero LLM dependency** in V1 (only embedding model needed)
-- **Zero external service dependency** (pure Python + SQLite)
-- **Smart writing pipeline** replaces LLM-based extraction with rule-based routing
-- **Reinforcement + rules** hybrid for importance (data-driven + heuristic)
-- **Token budget aware** retrieval (none of the four do this)
+Each project gets its own `.openclaw_memory/` directory. Searching in project A never returns results from project B.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) for details.
+Apache 2.0
